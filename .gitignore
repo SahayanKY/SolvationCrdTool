@@ -1,0 +1,13 @@
+#eclipseのプロジェクト設定ファイル
+.project
+.pydevproject
+
+#eclipseのGFM Viewerの出力ファイル
+*.md.html
+
+#jupyterのファイル
+*.ipynb
+
+#__pycache__
+**/__pycache__/
+
