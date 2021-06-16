@@ -39,9 +39,7 @@ if __name__ == '__main__':
     # 引数解析
     args = parser.parse_args()
 
-    # TODO 要検証(Noneになるはずなのでこれで判定できるか不明)
-    if ('solute' in vars(args) and
-        'solute-format' not in vars(args)):
+    if args.solute_format is None and args.solute is not None:
         parser.error("The '--solute' argument requires the '--solute-format'")
 
     # バージョン確認
