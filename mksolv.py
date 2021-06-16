@@ -1,6 +1,15 @@
 import argparse
+import platform
+import sys
+
+from rdkit import rdBase
+from rdkit import Chem
+from rdkit.Chem import AllChem
 
 def generateConformer(format,value):
+
+    #mol = Chem.MolFromMol2File(mol2FilePath)
+    #mol = Chem.MolFromSmiles(smiles)
     return
 
 def mksolv(solventconf, soluteconf, solventNum, soluteNum):
@@ -12,12 +21,19 @@ def mksolv(solventconf, soluteconf, solventNum, soluteNum):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='mksolv : Automatically generate molecular coordinates in solution.')
 
+    # TODO addHsフラグオプションを入れる
+    # trueならばSMILESに変換してコンフォマーを得る
+    # falseならば得られたmolオブジェクトから直接コンフォマーを得る
     parser.add_argument('--solvent_format', help='solvent format', required=True, choices=['SMILES', 'MOL', 'MOL2'])
     parser.add_argument('--solvent', help='solvent value', required=True)
     parser.add_argument('--solvent_num', help='number of solvent', required=True, type=int)
+    parser.add_argument('--solvent_addHs', help='add H atoms to solvent', action='store_true')
+
     parser.add_argument('--solute_format', help='solute format', choices=['SMILES', 'MOL', 'MOL2'])
     parser.add_argument('--solute', help='solute value')
     parser.add_argument('--solute_num', help='number of solute', type=int, default=1)
+    parser.add_argument('--solute_addHs', help='add H atoms to solute', action='store_true')
+
     parser.add_argument('--save', help='filename')
 
     # 引数解析
