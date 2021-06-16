@@ -1,8 +1,11 @@
 import argparse
 import platform
 import sys
+import itertools
+from random import Random
 
 import numpy as np
+from scipy.spatial import distance
 from rdkit import rdBase
 from rdkit import Chem
 from rdkit.Chem import AllChem
@@ -80,15 +83,45 @@ def uniform_random_rotateMatrix():
 
     return R
 
+# 分子内の最大距離を算出
+def calcMaxDistanceIn(conf):
+    atomxyzlist = conf.GetPositions()
+    return max(distance.pdist(atomxyzlist))
+
+
 # 溶液構造を生成
 def mksolv(solventconf, soluteconf, solventNum, soluteNum):
-    #np.random.seed(seed)
+    solventMaxDist = calcMaxDistanceIn(solventconf)
+    if soluteconf is None:
+        soluteMaxDist = 0
+    else:
+        soluteMaxDist  = calcMaxDistanceIn(soluteconf)
+
+    # 分子間の最低距離
+    padding = 1.3 # オングストローム
+    # 溶媒に対する溶質の大きさ
+    # 溶質が溶媒に対して極端に大きい時、箱1つに溶媒分子1つは無駄なので、複数詰めさせる
+    time = (soluteMaxDist+padding)//(solventMaxDist+padding)
+    if time == 0:
+        time = 1.0
+
+    # 全ての分子に対して回転行列を計算するのは無駄なので適当な数に絞る
+    # iter.__next__()で順に無限ループで取得
+    rotateMatrixIter = itertools.cycle([uniform_random_rotateMatrix() for i in range(29)])
+
+    # 溶質を配置するタイミングを決定
+    # solventNum+soluteNumの中からsoluteNumの数だけランダムに数を取り出す
+    indexSoluteList = Random().sample(range(solventNum+soluteNum), soluteNum)
+    indexSoluteList.sort()
+
+    # 溶質、溶媒が収まるボックスの数を計算
+    # time == 2 の場合、1箱に8分子入る
+    # solventNum == 10 の場合、溶媒だけで2箱必要
+    boxNum = -(-solventNum // (time*time*time)) + soluteNum
+    # 1辺当たりの箱の数を計算
+
     #
-    #分子内の最大距離を算出(溶媒溶質で大きい方を採用)
     #    そのサイズの立方体を並べてそこに回転させた分子を配置していく
-    #
-    #solventNum+soluteNumの中からsoluteNumの数だけランダムに数を取り出す
-    #    その番に溶質を配置する
     #
     #atomPositionList = conf.GetPositions()
     #solventNum+soluteNum回ループ
@@ -141,6 +174,9 @@ if __name__ == '__main__':
         soluteconf = generateConformer(args.solute_format, args.solute, args.solute_addHs)
     else:
         soluteconf = None
+
+    # TODO seedの取り扱いについて後で考える
+    np.random.seed(0)
 
     # 溶液構造を生成
     structure = mksolv(solventconf, soluteconf, args.solvent_num, args.solute_num)
