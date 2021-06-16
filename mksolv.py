@@ -2,13 +2,14 @@ import argparse
 import platform
 import sys
 import itertools
-from random import Random
+import random
 
 import numpy as np
 from scipy.spatial import distance
 from rdkit import rdBase
 from rdkit import Chem
 from rdkit.Chem import AllChem
+from rdkit.ML.DecTree.BuildSigTree import _GenerateRandomEnsemble
 
 def generateConformer(format, value, needAddHs):
     if format == 'SMILES':
@@ -84,18 +85,27 @@ def uniform_random_rotateMatrix():
     return R
 
 # 分子内の最大距離を算出
-def calcMaxDistanceIn(conf):
+def calcMaxInteratomicDistanceIn(conf):
     atomxyzlist = conf.GetPositions()
     return max(distance.pdist(atomxyzlist))
 
+# conformerを回転させた座標を与えるイテレータを生成
+def generateRandomRotatedConformerIter(conf, num):
+    # 全ての分子に対して回転行列を計算するのは無駄なので適当な数に絞る
+    rotateMatrixList = [uniform_random_rotateMatrix() for i in range(min(29,num))]
+
+    # 各回転行列毎に回転操作を行い、itrに登録
+    itr = itertools.cycle([np.dot(conf.GetPositions(),R) for R in rotateMatrixList])
+
+    return itr # itr.__next__()で順に無限ループで取得
 
 # 溶液構造を生成
 def mksolv(solventconf, soluteconf, solventNum, soluteNum):
-    solventMaxDist = calcMaxDistanceIn(solventconf)
+    solventMaxDist = calcMaxInteratomicDistanceIn(solventconf)
     if soluteconf is None:
         soluteMaxDist = 0
     else:
-        soluteMaxDist  = calcMaxDistanceIn(soluteconf)
+        soluteMaxDist  = calcMaxInteratomicDistanceIn(soluteconf)
 
     # 分子間の最低距離
     padding = 1.3 # オングストローム
@@ -105,13 +115,9 @@ def mksolv(solventconf, soluteconf, solventNum, soluteNum):
     if time == 0:
         time = 1.0
 
-    # 全ての分子に対して回転行列を計算するのは無駄なので適当な数に絞る
-    # iter.__next__()で順に無限ループで取得
-    rotateMatrixIter = itertools.cycle([uniform_random_rotateMatrix() for i in range(29)])
-
     # 溶質を配置するタイミングを決定
     # solventNum+soluteNumの中からsoluteNumの数だけランダムに数を取り出す
-    indexSoluteList = Random().sample(range(solventNum+soluteNum), soluteNum)
+    indexSoluteList = random.sample(range(solventNum+soluteNum), k=soluteNum)
     indexSoluteList.sort()
 
     # 溶質、溶媒が収まるボックスの数を計算
@@ -120,15 +126,18 @@ def mksolv(solventconf, soluteconf, solventNum, soluteNum):
     boxNum = -(-solventNum // (time*time*time)) + soluteNum
     # 1辺当たりの箱の数を計算
 
+    # イテレータ取得
+    rotatedSolventIter = generateRandomRotatedConformerIter(solventconf, solventNum)
+    rotatedSoluteIter  = generateRandomRotatedConformerIter(soluteconf,  soluteNum )
+
     #
     #    そのサイズの立方体を並べてそこに回転させた分子を配置していく
     #
     #atomPositionList = conf.GetPositions()
     #solventNum+soluteNum回ループ
-    #    R = uniform_random_rotateMatrix()
-    #    rotated = np.dot(atomPositionList, R)
+    #    rotated = itr.__next__()
     #    x,y,z >= 0の境界面にrotatedをくっつけるように平行移動
-    #
+    #    rotated + [10,20,30] これで平行移動計算が可能
     #
     #
 
@@ -177,6 +186,7 @@ if __name__ == '__main__':
 
     # TODO seedの取り扱いについて後で考える
     np.random.seed(0)
+    random.seed(0)
 
     # 溶液構造を生成
     structure = mksolv(solventconf, soluteconf, args.solvent_num, args.solute_num)
