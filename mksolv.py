@@ -90,12 +90,26 @@ def calcMaxInteratomicDistanceIn(conf):
     return max(distance.pdist(atomxyzlist))
 
 # conformerを回転させた座標を与えるイテレータを生成
-def generateRandomRotatedConformerIter(conf, num):
+def generateRandomRotatedConformerIter(conf, lengthOfBox, num):
     # 全ての分子に対して回転行列を計算するのは無駄なので適当な数に絞る
     rotateMatrixList = [uniform_random_rotateMatrix() for i in range(min(29,num))]
 
+    rotatedList = []
+    for R in rotateMatrixList:
+        # まず回転させる
+        rotated = np.dot(conf.GetPositions(),R)
+
+        # 後の計算を楽にするために、(paddingも含めて)原点基準に平行移動させる
+        minCoord = np.min(rotated, axis = 0)
+        maxCoord = np.max(rotated, axis = 0)
+        width = maxCoord - minCoord
+        padding = (lengthOfBox - width)/2
+        translated = rotated - minCoord + padding
+
+        rotatedList.append(translated)
+
     # 各回転行列毎に回転操作を行い、itrに登録
-    itr = itertools.cycle([np.dot(conf.GetPositions(),R) for R in rotateMatrixList])
+    itr = itertools.cycle(rotatedList)
 
     return itr # itr.__next__()で順に無限ループで取得
 
@@ -109,6 +123,9 @@ def mksolv(solventconf, soluteconf, solventNum, soluteNum):
 
     # 分子間の最低距離
     padding = 1.3 # オングストローム
+    # 溶媒1分子、溶質1分子を配置する箱のサイズ
+    lengthOfSolventBox = solventMaxDist+padding
+    lengthOfSoluteBox  = soluteMaxDist+padding
     # 溶媒に対する溶質の大きさ
     # 溶質が溶媒に対して極端に大きい時、箱1つに溶媒分子1つは無駄なので、複数詰めさせる
     time = min(1.0, math.floor((soluteMaxDist+padding)/(solventMaxDist+padding)))
@@ -124,12 +141,11 @@ def mksolv(solventconf, soluteconf, solventNum, soluteNum):
     # 1辺当たりの箱の数を計算
     boxNumPerSide = math.ceil(math.pow(boxNum, 1/3))
     # 箱の辺の長さ
-    lengthOfBox = soluteMaxDist+padding
+    lengthOfBox = max(lengthOfSolventBox, lengthOfSoluteBox)
 
     # イテレータ取得
-    rotatedSolventIter = generateRandomRotatedConformerIter(solventconf, solventNum)
-    rotatedSoluteIter  = generateRandomRotatedConformerIter(soluteconf,  soluteNum )
-    # TODO rotateしたものの基準点が原点になるように変更する(後の計算が楽)
+    rotatedSolventIter = generateRandomRotatedConformerIter(solventconf, lengthOfSolventBox, solventNum)
+    rotatedSoluteIter  = generateRandomRotatedConformerIter(soluteconf,  lengthOfSoluteBox,  soluteNum )
 
     i = 0
     j = 0
