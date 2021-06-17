@@ -89,29 +89,72 @@ def calcMaxInteratomicDistanceIn(conf):
     atomxyzlist = conf.GetPositions()
     return max(distance.pdist(atomxyzlist))
 
-# conformerを回転させた座標を与えるイテレータを生成
-def generateRandomRotatedConformerIter(conf, lengthOfBox, num):
-    # 全ての分子に対して回転行列を計算するのは無駄なので適当な数に絞る
-    rotateMatrixList = [uniform_random_rotateMatrix() for i in range(min(29,num))]
+class MolecularGroupBoxIterator():
+    def __init__(self, conf, lengthOfGroupBox, time, num):
+        time = int(time)
+        lengthOfSingleBox = lengthOfGroupBox/time
 
-    rotatedList = []
-    for R in rotateMatrixList:
-        # まず回転させる
-        rotated = np.dot(conf.GetPositions(),R)
+        self.__conf = conf
+        self.__lengthOfGroupBox = lengthOfGroupBox
+        self.__time = time
+        self.__lengthOfSingleBox = lengthOfSingleBox
+        self.__num = num
 
-        # 後の計算を楽にするために、(paddingも含めて)原点基準に平行移動させる
-        minCoord = np.min(rotated, axis = 0)
-        maxCoord = np.max(rotated, axis = 0)
-        width = maxCoord - minCoord
-        padding = (lengthOfBox - width)/2
-        translated = rotated - minCoord + padding
+        self.__atomSymbolList = [atom.GetSymbol() for atom in conf.GetOwningMol().GetAtoms()] * (time*time*time)
+        self.__singleBoxDisplacementList = [[i*lengthOfSingleBox, j*lengthOfSingleBox, k*lengthOfSingleBox] for i in range(time) for j in range(time) for k in range(time)]
+        self.__singleBoxItr = self.__generateRandomRotatedConformerIter(conf, lengthOfSingleBox, num)
 
-        rotatedList.append(translated)
 
-    # 各回転行列毎に回転操作を行い、itrに登録
-    itr = itertools.cycle(rotatedList)
+    # conformerを回転させた座標を与えるイテレータを生成
+    # 得られる座標値は(paddingも含めて)原点基準にx,y,z>=0に平行移動したもの
+    def __generateRandomRotatedConformerIter(conf, lengthOfSingleBox, num):
+        #conf : rdkit.Chem.Conformer
+        #lengthOfSingleBox : 1分子を入れる箱の一辺の長さ
+        #num : conformerに指定した化学種の総分子数
+        #
+        # 全ての分子に対して回転行列を計算するのは無駄なので適当な数に絞る
+        rotateMatrixList = [uniform_random_rotateMatrix() for i in range(min(29,num))]
 
-    return itr # itr.__next__()で順に無限ループで取得
+        rotatedList = []
+        for R in rotateMatrixList:
+            # まず回転させる
+            rotated = np.dot(conf.GetPositions(),R)
+
+            # 後の計算を楽にするために、(paddingも含めて)原点基準に平行移動させる
+            minCoord = np.min(rotated, axis = 0)
+            maxCoord = np.max(rotated, axis = 0)
+            width = maxCoord - minCoord
+            padding = (lengthOfSingleBox - width)/2
+            translated = rotated - minCoord + padding
+
+            rotatedList.append(translated)
+
+        # 各回転行列毎に回転操作を行い、itrに登録
+        itr = itertools.cycle(rotatedList)
+
+        return itr # itr.__next__()で順に無限ループで取得
+
+    def __next__(self):
+        #GroupBox内の各箱(SingleBox)ごとにrotatedを取得し、
+        #displacementを足しこむことでそのSingleBoxに配置する(translated)
+        #そしてtranslatedを次々登録していき、最後にそのリストを返す
+        groupcoordlist = np.empty((0,3), float)
+        for displacement in self.__singleBoxDisplacementList:
+            rotated = self.__singleBoxItr.__next__()
+            translated = rotated + displacement
+            groupcoordlist = np.append(groupcoordlist, translated, axis=0)
+
+        return groupcoordlist
+
+    def __iter__(self):
+        return self
+
+    def hasNext(self):
+        return True
+
+    def GetAtomSymbols(self):
+        return self.__atomSymbolList
+
 
 # 溶液構造を生成
 def mksolv(solventconf, soluteconf, solventNum, soluteNum):
@@ -128,7 +171,7 @@ def mksolv(solventconf, soluteconf, solventNum, soluteNum):
     lengthOfSoluteBox  = soluteMaxDist+padding
     # 溶媒に対する溶質の大きさ
     # 溶質が溶媒に対して極端に大きい時、箱1つに溶媒分子1つは無駄なので、複数詰めさせる
-    time = min(1.0, math.floor((soluteMaxDist+padding)/(solventMaxDist+padding)))
+    time = min(1.0, math.floor(lengthOfSoluteBox/lengthOfSolventBox))
 
     # 溶質を配置するタイミングを決定
     # solventNum+soluteNumの中からsoluteNumの数だけランダムに数を取り出す
@@ -137,22 +180,25 @@ def mksolv(solventconf, soluteconf, solventNum, soluteNum):
     # 溶質、溶媒が収まるボックスの数を計算
     # time == 2 の場合、1箱に8分子入る
     # solventNum == 10 の場合、溶媒だけで2箱必要
-    boxNum = math.ceil(solventNum / (time*time*time)) + soluteNum
+    groupBoxNum = math.ceil(solventNum / (time*time*time)) + soluteNum
     # 1辺当たりの箱の数を計算
-    boxNumPerSide = math.ceil(math.pow(boxNum, 1/3))
+    groupBoxNumPerSide = math.ceil(math.pow(groupBoxNum, 1/3))
     # 箱の辺の長さ
-    lengthOfBox = max(lengthOfSolventBox, lengthOfSoluteBox)
+    lengthOfGroupBox = max(lengthOfSolventBox, lengthOfSoluteBox)
 
     # イテレータ取得
-    rotatedSolventIter = generateRandomRotatedConformerIter(solventconf, lengthOfSolventBox, solventNum)
-    rotatedSoluteIter  = generateRandomRotatedConformerIter(soluteconf,  lengthOfSoluteBox,  soluteNum )
+    solventGroupBoxIter = MolecularGroupBoxIterator(solventconf, lengthOfGroupBox, time, solventNum)
+    if soluteconf is not None:
+        soluteGroupBoxIter = MolecularGroupBoxIterator(soluteconf, lengthOfGroupBox, 1, soluteNum)
+    else:
+        soluteGroupBoxIter = None
 
     i = 0
     j = 0
     k = 0
-    minCoord = np.array([ -boxNumPerSide/2 * lengthOfBox ] *3)
-    for boxi in range(boxNum):
-        boxiMinCoord = minCoord + [i*lengthOfBox, j*lengthOfBox, k*lengthOfBox]
+    minCoord = np.array([ -groupBoxNumPerSide/2 * lengthOfGroupBox ] *3)
+    for boxi in range(groupBoxNum):
+        boxiMinCoord = minCoord + [i*lengthOfGroupBox, j*lengthOfGroupBox, k*lengthOfGroupBox]
 
         if boxi in indexSoluteList:
             # 今回は溶質を配置
@@ -163,23 +209,13 @@ def mksolv(solventconf, soluteconf, solventNum, soluteNum):
 
         # インクリメント
         i = i+1
-        if i == boxNumPerSide:
+        if i == groupBoxNumPerSide:
             i = 0
             j = j+1
-        if j == boxNumPerSide:
+        if j == groupBoxNumPerSide:
             j = 0
             k = k+1
 
-    #
-    #    そのサイズの立方体を並べてそこに回転させた分子を配置していく
-    #
-    #atomPositionList = conf.GetPositions()
-    #solventNum+soluteNum回ループ
-    #    rotated = itr.__next__()
-    #    x,y,z >= 0の境界面にrotatedをくっつけるように平行移動
-    #    rotated + [10,20,30] これで平行移動計算が可能
-    #
-    #
 
     return
 
