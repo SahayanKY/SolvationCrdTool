@@ -202,10 +202,18 @@ def mksolv(solventconf, soluteconf, solventNum, soluteNum):
 
         if boxi in indexSoluteList:
             # 今回は溶質を配置
-            pass
+            groupBoxCoords = soluteGroupBoxIter.__next__()
+            groupBoxAtoms  = soluteGroupBoxIter.GetAtomSymbols()
         else:
             # 今回は溶媒を配置
-            pass
+            groupBoxCoords = solventGroupBoxIter.__next__()
+            groupBoxAtoms  = solventGroupBoxIter.GetAtomSymbols()
+
+        # groupboxをboxiに配置する
+        groupBoxCoords = boxiMinCoord + groupBoxCoords
+
+        # 書き出し
+        saveStructure(groupBoxCoords, groupBoxAtoms, './test.mksolv')
 
         # インクリメント
         i = i+1
@@ -220,7 +228,7 @@ def mksolv(solventconf, soluteconf, solventNum, soluteNum):
     return
 
 # ファイルに保存
-def saveStructure(structure, saveFilePath):
+def saveStructure(coords, atomsymbols, saveFilePath):
     return
 
 
