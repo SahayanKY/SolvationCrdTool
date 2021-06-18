@@ -39,7 +39,7 @@ def generateConformer(format, value, needAddHs):
 
         cids = AllChem.EmbedMultipleConfs(mol, numConfs, ps)
         # それらの構造最適化をする
-        AllChem.MMFFOptimizeMoleculeConfs(mol, numThreads=numThreads)
+        AllChem.MMFFOptimizeMoleculeConfs(mol, numThreads=1)
         prop = AllChem.MMFFGetMoleculeProperties(mol)
         # エネルギーを計算し、そのエネルギーのリストを作成する
         energyList = []
