@@ -171,7 +171,7 @@ def mksolv(solventconf, soluteconf, solventNum, soluteNum):
     lengthOfSoluteBox  = soluteMaxDist+padding
     # 溶媒に対する溶質の大きさ
     # 溶質が溶媒に対して極端に大きい時、箱1つに溶媒分子1つは無駄なので、複数詰めさせる
-    time = min(1.0, math.floor(lengthOfSoluteBox/lengthOfSolventBox))
+    time = max(1.0, math.floor(lengthOfSoluteBox/lengthOfSolventBox))
 
     # 溶質を配置するタイミングを決定
     # solventNum+soluteNumの中からsoluteNumの数だけランダムに数を取り出す
