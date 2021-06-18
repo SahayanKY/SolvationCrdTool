@@ -174,10 +174,6 @@ def mksolv(solventconf, soluteconf, solventNum, soluteNum, saveFilePath):
     # 溶質が溶媒に対して極端に大きい時、箱1つに溶媒分子1つは無駄なので、複数詰めさせる
     time = max(1.0, math.floor(lengthOfSoluteBox/lengthOfSolventBox))
 
-    # 溶質を配置するタイミングを決定
-    # solventNum+soluteNumの中からsoluteNumの数だけランダムに数を取り出す
-    indexSoluteList = random.sample(range(solventNum+soluteNum), k=soluteNum)
-
     # 溶質、溶媒が収まるボックスの数を計算
     # time == 2 の場合、1箱に8分子入る
     # solventNum == 10 の場合、溶媒だけで2箱必要
@@ -187,12 +183,21 @@ def mksolv(solventconf, soluteconf, solventNum, soluteNum, saveFilePath):
     # 箱の辺の長さ
     lengthOfGroupBox = max(lengthOfSolventBox, lengthOfSoluteBox)
 
+    # 溶質を配置するタイミングを決定
+    # groupBoxNumの中からsoluteNumの数だけランダムに数を取り出す
+    indexSoluteList = random.sample(range(groupBoxNum), k=soluteNum)
+
     # イテレータ取得
     solventGroupBoxIter = MolecularGroupBoxIterator(solventconf, lengthOfGroupBox, time, solventNum)
     if soluteconf is not None:
         soluteGroupBoxIter = MolecularGroupBoxIterator(soluteconf, lengthOfGroupBox, 1, soluteNum)
     else:
         soluteGroupBoxIter = None
+
+    print('time:{}'.format(time))
+    print('groupBoxNum:{}'.format(groupBoxNum))
+    print('groupBoxNumPerSide:{}'.format(groupBoxNumPerSide))
+    print('indexSoluteList:{}'.format(indexSoluteList))
 
     i = 0
     j = 0
