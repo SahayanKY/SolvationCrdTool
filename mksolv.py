@@ -13,7 +13,7 @@ from rdkit.Chem import AllChem
 
 def generateConformer(format, value, needAddHs):
     if format == 'SMILES':
-        mol = Chem.MolFromSmiles(value)
+        mol = Chem.AddHs(Chem.MolFromSmiles(value))
     elif format == 'MOL':
         mol = Chem.MolFromMolFile(value,removeHs=False)
     elif format == 'MOL2':
@@ -21,7 +21,7 @@ def generateConformer(format, value, needAddHs):
     else:
         raise ValueError("invalid choice: {} (choose from 'SMILES', 'MOL', 'MOL2')".format(format))
 
-    if needAddHs:
+    if format != 'SMILES' and needAddHs:
         # 水素を追加する必要がある場合、
         # 一度SMILESに変換し、molオブジェクトを得てから、addHsする
         mol = Chem.AddHs(Chem.MolFromSmiles(Chem.MolToSmiles(mol)))
@@ -107,7 +107,7 @@ class MolecularGroupBoxIterator():
 
     # conformerを回転させた座標を与えるイテレータを生成
     # 得られる座標値は(paddingも含めて)原点基準にx,y,z>=0に平行移動したもの
-    def __generateRandomRotatedConformerIter(conf, lengthOfSingleBox, num):
+    def __generateRandomRotatedConformerIter(self, conf, lengthOfSingleBox, num):
         #conf : rdkit.Chem.Conformer
         #lengthOfSingleBox : 1分子を入れる箱の一辺の長さ
         #num : conformerに指定した化学種の総分子数
@@ -157,7 +157,7 @@ class MolecularGroupBoxIterator():
 
 
 # 溶液構造を生成
-def mksolv(solventconf, soluteconf, solventNum, soluteNum):
+def mksolv(solventconf, soluteconf, solventNum, soluteNum, saveFilePath):
     solventMaxDist = calcMaxInteratomicDistanceIn(solventconf)
     if soluteconf is None:
         soluteMaxDist = 0
@@ -213,7 +213,7 @@ def mksolv(solventconf, soluteconf, solventNum, soluteNum):
         groupBoxCoords = boxiMinCoord + groupBoxCoords
 
         # 書き出し
-        saveStructure(groupBoxCoords, groupBoxAtoms, './test.mksolv')
+        saveStructure(groupBoxCoords, groupBoxAtoms, saveFilePath)
 
         # インクリメント
         i = i+1
@@ -279,10 +279,6 @@ if __name__ == '__main__':
     random.seed(0)
 
     # 溶液構造を生成
-    structure = mksolv(solventconf, soluteconf, args.solvent_num, args.solute_num)
-
-    # ファイルへ保存
-    saveStructure(structure, args.save)
-
+    structure = mksolv(solventconf, soluteconf, args.solvent_num, args.solute_num, args.save)
 
 
