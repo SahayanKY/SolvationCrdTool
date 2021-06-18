@@ -1,6 +1,7 @@
 import argparse
 import platform
 import sys
+import os
 import itertools
 import random
 import math
@@ -266,6 +267,11 @@ if __name__ == '__main__':
     if sys.version_info[0] != 3:
         print('Warnings:mksolv assumes python3.')
     print('rdkit:{}'.format(rdBase.rdkitVersion))
+
+    # 保存先確認
+    if os.path.exists(args.save):
+        # 保存先が既に存在していた場合
+        raise IOError('{} already exists.'.format(args.save))
 
     # 溶媒分子と溶質分子それぞれの単一構造を生成
     solventconf = generateConformer(args.solvent_format, args.solvent, args.solvent_addHs)
