@@ -229,7 +229,13 @@ def mksolv(solventconf, soluteconf, solventNum, soluteNum):
 
 # ファイルに保存
 def saveStructure(coords, atomsymbols, saveFilePath):
-    return
+    # mode='a' : 末尾に追記
+    with open(saveFilePath, mode='a') as f:
+        # 最終行の次から書き始める
+        f.write('\n')
+        contents = '\n'.join([ '{} {} {} {}'.format(symbol,x,y,z) for symbol,(x,y,z) in zip(atomsymbols,coords)])
+        f.write(contents)
+
 
 
 if __name__ == '__main__':
