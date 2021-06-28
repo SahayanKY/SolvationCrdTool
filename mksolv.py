@@ -91,7 +91,12 @@ def calcMaxInteratomicDistanceIn(conf):
     return max(distance.pdist(atomxyzlist))
 
 class MolecularGroupBoxIterator():
+    iter_id = 1
+
     def __init__(self, conf, lengthOfGroupBox, time, num):
+        self.iter_id = MolecularGroupBoxIterator.iter_id
+        MolecularGroupBoxIterator.iter_id += 1
+
         time = int(time)
         lengthOfSingleBox = lengthOfGroupBox/time
 
@@ -101,7 +106,18 @@ class MolecularGroupBoxIterator():
         self.__lengthOfSingleBox = lengthOfSingleBox
         self.__num = num
 
-        self.__atomSymbolList = [atom.GetSymbol() for atom in conf.GetOwningMol().GetAtoms()] * (time*time*time)
+        atomlist = conf.GetOwningMol().GetAtoms()
+        if atomlist[0].GetPDBResidueInfo() is None:
+            self.__atomNameList = [atom.GetSymbol() for atom in atomlist] * (time*time*time)
+            residueName = 'R{:0>2}'.format(self.iter_id)
+            self.__residueNameList = [residueName] * (len(atomlist)*time*time*time)
+
+        else:
+            #原子名
+            self.__atomNameList = [atom.GetPDBResidueInfo().GetName().replace(' ', '') for atom in atomlist] * (time*time*time)
+            #残基名
+            self.__residueNameList = [atom.GetPDBResidueInfo().GetResidueName().replace(' ', '') for atom in atomlist] * (time*time*time)
+
         self.__singleBoxDisplacementList = [[i*lengthOfSingleBox, j*lengthOfSingleBox, k*lengthOfSingleBox] for i in range(time) for j in range(time) for k in range(time)]
         self.__singleBoxItr = self.__generateRandomRotatedConformerIter(conf, lengthOfSingleBox, num)
 
@@ -153,8 +169,22 @@ class MolecularGroupBoxIterator():
     def hasNext(self):
         return True
 
-    def GetAtomSymbols(self):
-        return self.__atomSymbolList
+    def getAtomNames(self):
+        return self.__atomNameList
+
+    #原子(通し)番号
+    def getAtomNumbers(self):
+        return range(len(self.__atomNameList))
+
+    def getResidueNames(self):
+        return self.__residueNameList
+
+    #残基番号
+    def getResidueNumbers(self):
+        return itertools.chain.from_iterable([ [i] * len(self.__atomNameList) for i in range(self.getMoleculeNum())])
+
+    def getMoleculeNum(self):
+        return self.__time * self.__time * self.__time
 
 
 # 溶液構造を生成
@@ -202,24 +232,30 @@ def mksolv(solventconf, soluteconf, solventNum, soluteNum, saveFilePath):
     i = 0
     j = 0
     k = 0
+    atomNumOffset = 1
+    residueNumOffset = 1
     minCoord = np.array([ -groupBoxNumPerSide/2 * lengthOfGroupBox ] *3)
     for boxi in range(groupBoxNum):
         boxiMinCoord = minCoord + [i*lengthOfGroupBox, j*lengthOfGroupBox, k*lengthOfGroupBox]
 
         if boxi in indexSoluteList:
             # 今回は溶質を配置
-            groupBoxCoords = soluteGroupBoxIter.__next__()
-            groupBoxAtoms  = soluteGroupBoxIter.GetAtomSymbols()
+            groupboxiter = soluteGroupBoxIter
         else:
             # 今回は溶媒を配置
-            groupBoxCoords = solventGroupBoxIter.__next__()
-            groupBoxAtoms  = solventGroupBoxIter.GetAtomSymbols()
+            groupboxiter = solventGroupBoxIter
 
-        # groupboxをboxiに配置する
+        groupBoxCoords = groupboxiter.__next__()
+        groupBoxAtomNames  = groupboxiter.getAtomNames()
+        groupBoxAtomNums = [ atomNumOffset + i for i in groupboxiter.getAtomNumbers() ]
+        groupBoxResidueNames = groupboxiter.getResidueNames()
+        groupBoxResidueNums = [ residueNumOffset + i for i in groupboxiter.getResidueNumbers() ]
+
+        # groupboxをboxiの場所に配置する
         groupBoxCoords = boxiMinCoord + groupBoxCoords
 
         # 書き出し
-        saveStructure(groupBoxCoords, groupBoxAtoms, saveFilePath)
+        saveStructure(groupBoxCoords, groupBoxAtomNames, groupBoxAtomNums, groupBoxResidueNames, groupBoxResidueNums, saveFilePath)
 
         # インクリメント
         i = i+1
@@ -230,17 +266,19 @@ def mksolv(solventconf, soluteconf, solventNum, soluteNum, saveFilePath):
             j = 0
             k = k+1
 
+        atomNumOffset += len(groupBoxAtomNums)
+        residueNumOffset += groupboxiter.getMoleculeNum()
 
-    return
+
 
 # ファイルに保存
-def saveStructure(coords, atomsymbols, saveFilePath):
+def saveStructure(coords, atomNames, atomNums, residueNames, residueNums, saveFilePath):
     # mode='a' : 末尾に追記
     with open(saveFilePath, mode='a') as f:
         # 最終行の次から書き始める
-        f.write('\n')
-        contents = '\n'.join([ '{} {} {} {}'.format(symbol,x,y,z) for symbol,(x,y,z) in zip(atomsymbols,coords)])
+        contents = '\n'.join([ 'ATOM  {:>5} {:<4} {:<3}  {:>4}    {:8.3f}{:8.3f}{:8.3f}'.format(anum,aname,rename,renum,x,y,z) for anum, aname, rename, renum,(x,y,z) in zip(atomNums,atomNames,residueNames,residueNums,coords)])
         f.write(contents)
+        f.write('\n')
 
 
 
