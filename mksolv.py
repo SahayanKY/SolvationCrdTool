@@ -19,6 +19,8 @@ def generateConformer(format, value, needAddHs):
         mol = Chem.MolFromMolFile(value,removeHs=False)
     elif format == 'MOL2':
         mol = Chem.MolFromMol2File(value,removeHs=False)
+    elif format == 'PDB':
+        mol = Chem.MolFromPDBFile(value,removeHs=False)
     else:
         raise ValueError("invalid choice: {} (choose from 'SMILES', 'MOL', 'MOL2')".format(format))
 
@@ -285,12 +287,12 @@ def saveStructure(coords, atomNames, atomNums, residueNames, residueNums, saveFi
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='mksolv : Automatically generate molecular coordinates in solution.')
 
-    parser.add_argument('--solvent_format', help='solvent format', required=True, choices=['SMILES', 'MOL', 'MOL2'])
+    parser.add_argument('--solvent_format', help='solvent format', required=True, choices=['SMILES', 'MOL', 'MOL2', 'PDB'])
     parser.add_argument('--solvent', help='solvent value', required=True)
     parser.add_argument('--solvent_num', help='number of solvent', required=True, type=int)
     parser.add_argument('--solvent_addHs', help='add H atoms to solvent', action='store_true')
 
-    parser.add_argument('--solute_format', help='solute format', choices=['SMILES', 'MOL', 'MOL2'])
+    parser.add_argument('--solute_format', help='solute format', choices=['SMILES', 'MOL', 'MOL2', 'PDB'])
     parser.add_argument('--solute', help='solute value')
     parser.add_argument('--solute_num', help='number of solute', type=int, default=0)
     parser.add_argument('--solute_addHs', help='add H atoms to solute', action='store_true')
