@@ -11,6 +11,7 @@ from scipy.spatial import distance
 from rdkit import rdBase
 from rdkit import Chem
 from rdkit.Chem import AllChem
+from rdkit.Chem import Descriptors
 
 def generateConformer(format, value, needAddHs):
     if format == 'SMILES':
@@ -248,6 +249,17 @@ def mksolv(solventconf, soluteconf, solventNum, soluteNum, saveFilePath):
     print('groupBoxNum:{}'.format(groupBoxNum))
     print('groupBoxNumPerSide:{}'.format(groupBoxNumPerSide))
     print('indexSoluteList:{}'.format(indexSoluteList))
+    print('solventTotalExcessNum:{}'.format(solventTotalExcessNum))
+    # 単位 : g/mol
+    soluteMass = 0 if soluteconf is None else Descriptors.MolWt(soluteconf.GetOwningMol()) * soluteNum
+    solventMass = Descriptors.MolWt(solventconf.GetOwningMol()) * solventNum
+    # 単位 : angstrom^3
+    soluteVolume = soluteNum * math.pow(lengthOfGroupBox,3)
+    solventVolume = (groupBoxNum-soluteNum) * math.pow(lengthOfGroupBox,3)
+    if soluteconf is not None:
+        print('pureSoluteDensity:{:7.5f}[g/cm3]'.format(soluteMass/soluteVolume * (10/6.02214076)))
+        print('pureSolventDensity:{:7.5f}[g/cm3]'.format(solventMass/solventVolume * (10/6.02214076)))
+    print('solutionDensity:{:7.5f}[g/cm3]'.format((soluteMass+solventMass)/(soluteVolume+solventVolume) * (10/6.02214076)))
 
     i = 0
     j = 0
