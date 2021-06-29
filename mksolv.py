@@ -95,7 +95,7 @@ def calcMaxInteratomicDistanceIn(conf):
 class MolecularGroupBoxIterator():
     iter_id = 1
 
-    def __init__(self, conf, lengthOfGroupBox, time, num):
+    def __init__(self, conf, lengthOfGroupBox, time, excessList):
         self.iter_id = MolecularGroupBoxIterator.iter_id
         MolecularGroupBoxIterator.iter_id += 1
 
@@ -106,31 +106,34 @@ class MolecularGroupBoxIterator():
         self.__lengthOfGroupBox = lengthOfGroupBox
         self.__time = time
         self.__lengthOfSingleBox = lengthOfSingleBox
-        self.__num = num
+        self.__excessList = excessList
+        self.__excessListIter = excessList.__iter__()
 
         atomlist = conf.GetOwningMol().GetAtoms()
         if atomlist[0].GetPDBResidueInfo() is None:
-            self.__atomNameList = [atom.GetSymbol() for atom in atomlist] * (time*time*time)
+            self.__singleBoxAtomNameList = [atom.GetSymbol() for atom in atomlist]
             residueName = 'R{:0>2}'.format(self.iter_id)
-            self.__residueNameList = [residueName] * (len(atomlist)*time*time*time)
+            self.__singleBoxResidueNameList = [residueName] * len(atomlist)
 
         else:
             #原子名
-            self.__atomNameList = [atom.GetPDBResidueInfo().GetName().replace(' ', '') for atom in atomlist] * (time*time*time)
+            self.__singleBoxAtomNameList = [atom.GetPDBResidueInfo().GetName().replace(' ', '') for atom in atomlist]
             #残基名
-            self.__residueNameList = [atom.GetPDBResidueInfo().GetResidueName().replace(' ', '') for atom in atomlist] * (time*time*time)
+            self.__singleBoxResidueNameList = [atom.GetPDBResidueInfo().GetResidueName().replace(' ', '') for atom in atomlist]
 
         self.__singleBoxDisplacementList = [[i*lengthOfSingleBox, j*lengthOfSingleBox, k*lengthOfSingleBox] for i in range(time) for j in range(time) for k in range(time)]
-        self.__singleBoxItr = self.__generateRandomRotatedConformerIter(conf, lengthOfSingleBox, num)
+        self.__singleBoxItr = self.__generateRandomRotatedConformerIter(conf, lengthOfSingleBox)
 
 
     # conformerを回転させた座標を与えるイテレータを生成
     # 得られる座標値は(paddingも含めて)原点基準にx,y,z>=0に平行移動したもの
-    def __generateRandomRotatedConformerIter(self, conf, lengthOfSingleBox, num):
+    def __generateRandomRotatedConformerIter(self, conf, lengthOfSingleBox):
         #conf : rdkit.Chem.Conformer
         #lengthOfSingleBox : 1分子を入れる箱の一辺の長さ
         #num : conformerに指定した化学種の総分子数
         #
+        # 配置する総分子数
+        num = self.getMoleculeNum()*len(self.__excessList) - sum(self.__excessList)
         # 全ての分子に対して回転行列を計算するのは無駄なので適当な数に絞る
         rotateMatrixList = [uniform_random_rotateMatrix() for i in range(min(29,num))]
 
@@ -154,36 +157,37 @@ class MolecularGroupBoxIterator():
         return itr # itr.__next__()で順に無限ループで取得
 
     def __next__(self):
-        #GroupBox内の各箱(SingleBox)ごとにrotatedを取得し、
-        #displacementを足しこむことでそのSingleBoxに配置する(translated)
-        #そしてtranslatedを次々登録していき、最後にそのリストを返す
+        # 今回の過剰分を取得
+        excessNum = self.__excessListIter.__next__()
+        # スキップするタイミングを決定
+        skipIndexList = random.sample(range(self.getMoleculeNum()), k=excessNum)
+
+        # GroupBox内の各箱(SingleBox)ごとにrotatedを取得し、
+        # displacementを足しこむことでそのSingleBoxに配置する(translated)
+        # そしてtranslatedを次々登録していき、最後にそのリストを返す
         groupcoordlist = np.empty((0,3), float)
-        for displacement in self.__singleBoxDisplacementList:
+        for i, displacement in enumerate(self.__singleBoxDisplacementList):
+            if i in skipIndexList:
+                # 過剰分処理のためここはスキップ
+                continue
             rotated = self.__singleBoxItr.__next__()
             translated = rotated + displacement
             groupcoordlist = np.append(groupcoordlist, translated, axis=0)
 
-        return groupcoordlist
+        # 実際に配置する分子数だけatomnamesやresiduenamesなどを倍増させる
+        placeNum = self.getMoleculeNum() - excessNum
+        groupatomnames = self.__singleBoxAtomNameList * placeNum
+        groupresiduenames = self.__singleBoxResidueNameList * placeNum
+        groupatomnums = range(len(groupatomnames))
+        groupresiduenums = itertools.chain.from_iterable([ [i] * len(self.__singleBoxAtomNameList) for i in range(placeNum)])
+
+        return groupcoordlist, groupatomnames, groupatomnums, groupresiduenames, groupresiduenums
 
     def __iter__(self):
         return self
 
     def hasNext(self):
         return True
-
-    def getAtomNames(self):
-        return self.__atomNameList
-
-    #原子(通し)番号
-    def getAtomNumbers(self):
-        return range(len(self.__atomNameList))
-
-    def getResidueNames(self):
-        return self.__residueNameList
-
-    #残基番号
-    def getResidueNumbers(self):
-        return itertools.chain.from_iterable([ [i] * len(self.__atomNameList) for i in range(self.getMoleculeNum())])
 
     def getMoleculeNum(self):
         return self.__time * self.__time * self.__time
@@ -212,7 +216,7 @@ def mksolv(solventconf, soluteconf, solventNum, soluteNum, saveFilePath):
     # さらにgroupBoxを立方体に配置できるように三乗根のceilの三乗をとる
     # 1辺当たりの箱の数を計算
     groupBoxNumPerSide = math.ceil(math.pow(solventNum / (time*time*time) + soluteNum, 1/3))
-    groupBoxNum = math.pow(groupBoxNumPerSide, 3)
+    groupBoxNum = int(math.pow(groupBoxNumPerSide, 3))
     # 過剰の溶媒分子の数を計算し、その分を後で引く
     solventTotalExcessNum = (groupBoxNum-soluteNum) * time*time*time - solventNum
     # 箱の辺の長さ
@@ -221,24 +225,22 @@ def mksolv(solventconf, soluteconf, solventNum, soluteNum, saveFilePath):
     # 溶質を配置するタイミングを決定
     # groupBoxNumの中からsoluteNumの数だけランダムに数を取り出す
     indexSoluteList = random.sample(range(groupBoxNum), k=soluteNum)
-    indexSolventList = [i for i in range(groupBoxNum) if i not in indexSoluteList]
 
     # 各groupboxにおいて、それぞれで幾つ分子を取り除くかを決定(過剰分の処理)
     # (ただし、溶質は全て過剰ゼロ)
     # まずは溶媒に関して過剰分の平均をとり、最低の過剰数を計算(確実にこの分は差し引く)
     solventAverageExcessNum = math.floor(solventTotalExcessNum / (groupBoxNum-soluteNum))
-    excessNumList = [ solventAverageExcessNum ] * groupBoxNum
+    solventExcessNumList = [ solventAverageExcessNum ] * (groupBoxNum-soluteNum)
     # 残りは乱数で配分
-    for i in random.sample(indexSolventList, k=solventTotalExcessNum - solventAverageExcessNum*(groupBoxNum-soluteNum)):
-        excessNumList[i] += 1
+    for i in random.sample(range(len(solventExcessNumList)), k=int(solventTotalExcessNum - solventAverageExcessNum*(groupBoxNum-soluteNum))):
+        solventExcessNumList[i] += 1
     # 溶質を配置するgroupboxでは過剰はゼロ
-    for i in indexSoluteList:
-        excessNumList[i] = 0
+    soluteExcessNumList = [0] * soluteNum
 
     # イテレータ取得
-    solventGroupBoxIter = MolecularGroupBoxIterator(solventconf, lengthOfGroupBox, time, solventNum)
+    solventGroupBoxIter = MolecularGroupBoxIterator(solventconf, lengthOfGroupBox, time, solventExcessNumList)
     if soluteconf is not None:
-        soluteGroupBoxIter = MolecularGroupBoxIterator(soluteconf, lengthOfGroupBox, 1, soluteNum)
+        soluteGroupBoxIter = MolecularGroupBoxIterator(soluteconf, lengthOfGroupBox, 1, soluteExcessNumList)
     else:
         soluteGroupBoxIter = None
 
@@ -263,19 +265,20 @@ def mksolv(solventconf, soluteconf, solventNum, soluteNum, saveFilePath):
             # 今回は溶媒を配置
             groupboxiter = solventGroupBoxIter
 
-        # TODO 過剰分をiterに渡せるように処理を拡張
-        # TODO 過剰分に応じてatomNamesなどの長さが変わるようにiter側の処理を修正
-        groupBoxCoords = groupboxiter.__next__()
-        groupBoxAtomNames  = groupboxiter.getAtomNames()
-        groupBoxAtomNums = [ atomNumOffset + i for i in groupboxiter.getAtomNumbers() ]
-        groupBoxResidueNames = groupboxiter.getResidueNames()
-        groupBoxResidueNums = [ residueNumOffset + i for i in groupboxiter.getResidueNumbers() ]
+        coords, atomNames, atomNums, residueNames, residueNums = groupboxiter.__next__()
+        atomNums = [atomNumOffset + i for i in atomNums]
+        residueNums = [ residueNumOffset + i for i in residueNums ]
 
         # groupboxをboxiの場所に配置する
-        groupBoxCoords = boxiMinCoord + groupBoxCoords
+        coords = boxiMinCoord + coords
 
-        # 書き出し
-        saveStructure(groupBoxCoords, groupBoxAtomNames, groupBoxAtomNums, groupBoxResidueNames, groupBoxResidueNums, saveFilePath)
+        # 中身がある場合のみ
+        if len(coords) != 0:
+            # 書き出し
+            saveStructure(coords, atomNames, atomNums, residueNames, residueNums, saveFilePath)
+            # オフセット移動
+            atomNumOffset = atomNums[-1] +1
+            residueNumOffset = residueNums[-1] +1
 
         # インクリメント
         i = i+1
@@ -285,9 +288,6 @@ def mksolv(solventconf, soluteconf, solventNum, soluteNum, saveFilePath):
         if j == groupBoxNumPerSide:
             j = 0
             k = k+1
-
-        atomNumOffset += len(groupBoxAtomNums)
-        residueNumOffset += groupboxiter.getMoleculeNum()
 
 
 
