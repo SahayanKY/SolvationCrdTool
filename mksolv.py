@@ -208,16 +208,32 @@ def mksolv(solventconf, soluteconf, solventNum, soluteNum, saveFilePath):
 
     # 溶質、溶媒が収まるボックスの数を計算
     # time == 2 の場合、1箱に8分子入る
-    # solventNum == 10 の場合、溶媒だけで2箱必要
-    groupBoxNum = math.ceil(solventNum / (time*time*time)) + soluteNum
+    # solventNum == 10 の場合、溶媒だけで2箱必要(過剰分は配置するときに減らして処理)
+    # さらにgroupBoxを立方体に配置できるように三乗根のceilの三乗をとる
     # 1辺当たりの箱の数を計算
-    groupBoxNumPerSide = math.ceil(math.pow(groupBoxNum, 1/3))
+    groupBoxNumPerSide = math.ceil(math.pow(solventNum / (time*time*time) + soluteNum, 1/3))
+    groupBoxNum = math.pow(groupBoxNumPerSide, 3)
+    # 過剰の溶媒分子の数を計算し、その分を後で引く
+    solventTotalExcessNum = (groupBoxNum-soluteNum) * time*time*time - solventNum
     # 箱の辺の長さ
     lengthOfGroupBox = max(lengthOfSolventBox, lengthOfSoluteBox)
 
     # 溶質を配置するタイミングを決定
     # groupBoxNumの中からsoluteNumの数だけランダムに数を取り出す
     indexSoluteList = random.sample(range(groupBoxNum), k=soluteNum)
+    indexSolventList = [i for i in range(groupBoxNum) if i not in indexSoluteList]
+
+    # 各groupboxにおいて、それぞれで幾つ分子を取り除くかを決定(過剰分の処理)
+    # (ただし、溶質は全て過剰ゼロ)
+    # まずは溶媒に関して過剰分の平均をとり、最低の過剰数を計算(確実にこの分は差し引く)
+    solventAverageExcessNum = math.floor(solventTotalExcessNum / (groupBoxNum-soluteNum))
+    excessNumList = [ solventAverageExcessNum ] * groupBoxNum
+    # 残りは乱数で配分
+    for i in random.sample(indexSolventList, k=solventTotalExcessNum - solventAverageExcessNum*(groupBoxNum-soluteNum)):
+        excessNumList[i] += 1
+    # 溶質を配置するgroupboxでは過剰はゼロ
+    for i in indexSoluteList:
+        excessNumList[i] = 0
 
     # イテレータ取得
     solventGroupBoxIter = MolecularGroupBoxIterator(solventconf, lengthOfGroupBox, time, solventNum)
@@ -247,6 +263,8 @@ def mksolv(solventconf, soluteconf, solventNum, soluteNum, saveFilePath):
             # 今回は溶媒を配置
             groupboxiter = solventGroupBoxIter
 
+        # TODO 過剰分をiterに渡せるように処理を拡張
+        # TODO 過剰分に応じてatomNamesなどの長さが変わるようにiter側の処理を修正
         groupBoxCoords = groupboxiter.__next__()
         groupBoxAtomNames  = groupboxiter.getAtomNames()
         groupBoxAtomNums = [ atomNumOffset + i for i in groupboxiter.getAtomNumbers() ]
