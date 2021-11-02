@@ -250,10 +250,10 @@ class MolecularGroupBoxIterator():
             groupcoordlist = np.append(groupcoordlist, translated, axis=0)
 
         # 実際に配置する分子数だけatomnamesやresiduenamesなどを倍増させる
-        groupatomnames = self.__singleBoxAtomNameList * arrangeNum
-        groupresiduenames = self.__singleBoxResidueNameList * arrangeNum
+        groupatomnames = self.__conf.giveAtomNames() * arrangeNum
+        groupresiduenames = self.__conf.giveResidueNames() * arrangeNum
         groupatomnums = range(len(groupatomnames))
-        groupresiduenums = itertools.chain.from_iterable([ [i] * len(self.__singleBoxAtomNameList) for i in range(arrangeNum)])
+        groupresiduenums = itertools.chain.from_iterable([ [i] * len(self.__conf.giveAtomNames()) for i in range(arrangeNum)])
 
         return groupcoordlist, groupatomnames, groupatomnums, groupresiduenames, groupresiduenums
 
