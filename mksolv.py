@@ -96,7 +96,7 @@ def calcMaxInteratomicDistanceIn(conf):
 class MolecularGroupBoxIterator():
     iter_id = 1
 
-    def __init__(self, conf, lengthOfGroupBox, time, excessList):
+    def __init__(self, conf, lengthOfGroupBox, time, arrangeNumList):
         self.iter_id = MolecularGroupBoxIterator.iter_id
         MolecularGroupBoxIterator.iter_id += 1
 
@@ -107,8 +107,8 @@ class MolecularGroupBoxIterator():
         self.__lengthOfGroupBox = lengthOfGroupBox
         self.__time = time
         self.__lengthOfSingleBox = lengthOfSingleBox
-        self.__excessList = excessList
-        self.__excessListIter = excessList.__iter__()
+        self.__arrangeNumList = arrangeNumList
+        self.__arrangeNumListIter = arrangeNumList.__iter__()
 
         atomlist = conf.GetOwningMol().GetAtoms()
         if atomlist[0].GetPDBResidueInfo() is None:
@@ -134,7 +134,7 @@ class MolecularGroupBoxIterator():
         #num : conformerに指定した化学種の総分子数
         #
         # 配置する総分子数
-        num = self.getMoleculeNum()*len(self.__excessList) - sum(self.__excessList)
+        num = sum(self.__arrangeNumList)
         # 全ての分子に対して回転行列を計算するのは無駄なので適当な数に絞る
         rotateMatrixList = [uniform_random_rotateMatrix() for i in range(min(29,num))]
 
@@ -158,17 +158,17 @@ class MolecularGroupBoxIterator():
         return itr # itr.__next__()で順に無限ループで取得
 
     def __next__(self):
-        # 今回の過剰分を取得
-        excessNum = self.__excessListIter.__next__()
+        # 今回の配置数を取得
+        arrangeNum = self.__arrangeNumListIter.__next__()
         # スキップするタイミングを決定
-        skipIndexList = random.sample(range(self.getMoleculeNum()), k=excessNum)
+        arrangeIndexList = random.sample(range(self.getMoleculeNum()), k=arrangeNum)
 
         # GroupBox内の各箱(SingleBox)ごとにrotatedを取得し、
         # displacementを足しこむことでそのSingleBoxに配置する(translated)
         # そしてtranslatedを次々登録していき、最後にそのリストを返す
         groupcoordlist = np.empty((0,3), float)
         for i, displacement in enumerate(self.__singleBoxDisplacementList):
-            if i in skipIndexList:
+            if i not in arrangeIndexList:
                 # 過剰分処理のためここはスキップ
                 continue
             rotated = self.__singleBoxItr.__next__()
@@ -176,11 +176,10 @@ class MolecularGroupBoxIterator():
             groupcoordlist = np.append(groupcoordlist, translated, axis=0)
 
         # 実際に配置する分子数だけatomnamesやresiduenamesなどを倍増させる
-        placeNum = self.getMoleculeNum() - excessNum
-        groupatomnames = self.__singleBoxAtomNameList * placeNum
-        groupresiduenames = self.__singleBoxResidueNameList * placeNum
+        groupatomnames = self.__singleBoxAtomNameList * arrangeNum
+        groupresiduenames = self.__singleBoxResidueNameList * arrangeNum
         groupatomnums = range(len(groupatomnames))
-        groupresiduenums = itertools.chain.from_iterable([ [i] * len(self.__singleBoxAtomNameList) for i in range(placeNum)])
+        groupresiduenums = itertools.chain.from_iterable([ [i] * len(self.__singleBoxAtomNameList) for i in range(arrangeNum)])
 
         return groupcoordlist, groupatomnames, groupatomnums, groupresiduenames, groupresiduenums
 
@@ -203,7 +202,7 @@ def mksolv(solventconf, soluteconf, solventNum, soluteNum, saveFilePath):
         soluteMaxDist  = calcMaxInteratomicDistanceIn(soluteconf)
 
     # 分子間の最低距離
-    padding = 1.3 # オングストローム
+    padding = 0.7 # オングストローム
     # 溶媒1分子、溶質1分子を配置する箱のサイズ
     lengthOfSolventBox = solventMaxDist+padding
     lengthOfSoluteBox  = soluteMaxDist+padding
@@ -235,13 +234,16 @@ def mksolv(solventconf, soluteconf, solventNum, soluteNum, saveFilePath):
     # 残りは乱数で配分
     for i in random.sample(range(len(solventExcessNumList)), k=int(solventTotalExcessNum - solventAverageExcessNum*(groupBoxNum-soluteNum))):
         solventExcessNumList[i] += 1
+    # 各groupboxにおいて実際に配置する数を決定
+    solventArrangeNumList = [int(time*time*time - excess) for excess in solventExcessNumList]
     # 溶質を配置するgroupboxでは過剰はゼロ
-    soluteExcessNumList = [0] * soluteNum
+    soluteArrangeNumList = [1] * soluteNum
+
 
     # イテレータ取得
-    solventGroupBoxIter = MolecularGroupBoxIterator(solventconf, lengthOfGroupBox, time, solventExcessNumList)
+    solventGroupBoxIter = MolecularGroupBoxIterator(solventconf, lengthOfGroupBox, time, solventArrangeNumList)
     if soluteconf is not None:
-        soluteGroupBoxIter = MolecularGroupBoxIterator(soluteconf, lengthOfGroupBox, 1, soluteExcessNumList)
+        soluteGroupBoxIter = MolecularGroupBoxIterator(soluteconf, lengthOfGroupBox, 1, soluteArrangeNumList)
     else:
         soluteGroupBoxIter = None
 
