@@ -48,8 +48,7 @@ class Conformer():
         elif format == 'PDB':
             # EPなどの存在によりrdkitでは読み込めなかった可能性がある場合
             # 改めてPDBを読み込み直す
-            # TODO 実装
-            pass
+            self.__atomNameList, self.__residueNameList, self.__positionList = self.__generatePDBConformer(value)
 
 
 
@@ -102,6 +101,26 @@ class Conformer():
 
         return mol.GetConformer(conformerID)
 
+    def __generatePDBConformer(self, pdbFilePath):
+        with open(pdbFilePath, mode='r') as f:
+            # 原子の部分のみ取り出す
+            lines = [s.strip('\n') for s in f.readlines() if s.startswith('ATOM') or s.startswith('HETATM')]
+
+        #1始まりで
+        #13-16: 原子名
+        #18-20: 残基名
+        #31-38: X座標
+        #39-46: Y座標
+        #47-54: Z座標
+        # 原子名
+        atomNameList = [s[12:16].replace(' ', '') for s in lines]
+        # 残基名
+        residueNameList = [s[17:20].replace(' ', '') for s in lines]
+        # 座標値
+        positionList = np.array([[float(s[30:38]),float(s[38:46]),float(s[46:54])] for s in lines])
+
+        return atomNameList, residueNameList, positionList
+
     def giveAtomPositions(self):
         # TODO 出来ればディープコピーにしたいが
         return self.__positionList
@@ -153,11 +172,6 @@ class MolecularGroupBoxIterator():
     iter_id = 1
 
     def __init__(self, conf, lengthOfGroupBox, time, arrangeNumList):
-        #=======================================================================
-        # self.iter_id = MolecularGroupBoxIterator.iter_id
-        # MolecularGroupBoxIterator.iter_id += 1
-        #=======================================================================
-
         time = int(time)
         lengthOfSingleBox = lengthOfGroupBox/time
 
@@ -167,20 +181,6 @@ class MolecularGroupBoxIterator():
         self.__lengthOfSingleBox = lengthOfSingleBox
         self.__arrangeNumList = arrangeNumList
         self.__arrangeNumListIter = arrangeNumList.__iter__()
-
-#===============================================================================
-#         atomlist = conf.GetOwningMol().GetAtoms()
-#         if atomlist[0].GetPDBResidueInfo() is None:
-#             self.__singleBoxAtomNameList = [atom.GetSymbol() for atom in atomlist]
-#             residueName = 'R{:0>2}'.format(self.iter_id)
-#             self.__singleBoxResidueNameList = [residueName] * len(atomlist)
-#
-#         else:
-#             #原子名
-#             self.__singleBoxAtomNameList = [atom.GetPDBResidueInfo().GetName().replace(' ', '') for atom in atomlist]
-#             #残基名
-#             self.__singleBoxResidueNameList = [atom.GetPDBResidueInfo().GetResidueName().replace(' ', '') for atom in atomlist]
-#===============================================================================
 
         self.__singleBoxDisplacementList = [[i*lengthOfSingleBox, j*lengthOfSingleBox, k*lengthOfSingleBox] for i in range(time) for j in range(time) for k in range(time)]
         self.__singleBoxItr = self.__generateRandomRotatedConformerIter(conf, lengthOfSingleBox)
@@ -201,7 +201,7 @@ class MolecularGroupBoxIterator():
         rotatedList = []
         for R in rotateMatrixList:
             # まず回転させる
-            rotated = np.dot(conf.GetPositions(),R)
+            rotated = np.dot(conf.giveAtomPositions(),R)
 
             # 後の計算を楽にするために、(paddingも含めて)原点基準に平行移動させる
             minCoord = np.min(rotated, axis = 0)
