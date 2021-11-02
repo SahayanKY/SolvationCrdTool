@@ -13,50 +13,106 @@ from rdkit import Chem
 from rdkit.Chem import AllChem
 from rdkit.Chem import Descriptors
 
-def generateConformer(format, value, needAddHs):
-    if format == 'SMILES':
-        mol = Chem.AddHs(Chem.MolFromSmiles(value))
-    elif format == 'MOL':
-        mol = Chem.MolFromMolFile(value,removeHs=False)
-    elif format == 'MOL2':
-        mol = Chem.MolFromMol2File(value,removeHs=False)
-    elif format == 'PDB':
-        mol = Chem.MolFromPDBFile(value,removeHs=False)
-    else:
-        raise ValueError("invalid choice: {} (choose from 'SMILES', 'MOL', 'MOL2')".format(format))
+class Conformer():
+    # TODO 分子量の計算メソッドを追加
+    residue_id = 1
 
-    if format != 'SMILES' and needAddHs:
-        # 水素を追加する必要がある場合、
-        # 一度SMILESに変換し、molオブジェクトを得てから、addHsする
-        mol = Chem.AddHs(Chem.MolFromSmiles(Chem.MolToSmiles(mol)))
+    def __init__(self, format, value, needAddHs):
+        self.residue_id = Conformer.residue_id
+        Conformer.residue_id += 1
 
-    if len(mol.GetConformers()) == 0:
-        # conformerが存在しない場合(SMILESを経由している場合)
-        # 配座異性体を生成し、最適構造を導く
-        # https://www.ag.kagawa-u.ac.jp/charlesy/2020/02/26/2231/
+        # まずrdkitで読み込めないか試す
+        mol = self.__generateRdkitMol(format, value, needAddHs)
+        if mol is not None:
+            # 正常に読み込めた場合
+            # rdkitのConformerを生成する
+            rdconf = self.__generateRdkitConformer(mol)
 
-        # numConfsの数の配座異性体を生成
-        numConfs = 100
-        ps = AllChem.ETKDG()
-        ps.pruneRmsThresh = 0 #枝刈りなし
-        ps.numThreads = 1
+            # 原子名や残基名
+            atomlist = rdconf.GetOwningMol().GetAtoms()
+            if atomlist[0].GetPDBResidueInfo() is None:
+                # PDB情報が無い場合(SMILES等)
+                self.__atomNameList = [atom.GetSymbol() for atom in atomlist]
+                residueName = 'R{:0>2}'.format(self.residue_id)
+                self.__residueNameList = [residueName] * len(atomlist)
 
-        cids = AllChem.EmbedMultipleConfs(mol, numConfs, ps)
-        # それらの構造最適化をする
-        AllChem.MMFFOptimizeMoleculeConfs(mol, numThreads=1)
-        prop = AllChem.MMFFGetMoleculeProperties(mol)
-        # エネルギーを計算し、そのエネルギーのリストを作成する
-        energyList = []
-        for cid in cids:
-            mmff = AllChem.MMFFGetMoleculeForceField(mol, prop, confId=cid)
-            energyList.append(mmff.CalcEnergy())
+            else:
+                #原子名
+                self.__atomNameList = [atom.GetPDBResidueInfo().GetName().replace(' ', '') for atom in atomlist]
+                #残基名
+                self.__residueNameList = [atom.GetPDBResidueInfo().GetResidueName().replace(' ', '') for atom in atomlist]
 
-        # もっともエネルギーが低かったものを採用する
-        conformerID = cids[energyList.index(min(energyList))]
-    else:
-        conformerID = 0
+            # 座標値
+            self.__positionList = rdconf.GetPositions()
 
-    return mol.GetConformer(conformerID)
+        elif format == 'PDB':
+            # EPなどの存在によりrdkitでは読み込めなかった可能性がある場合
+            # 改めてPDBを読み込み直す
+            # TODO 実装
+            pass
+
+
+
+
+    def __generateRdkitMol(self, format, value, needAddHs):
+        if format == 'SMILES':
+            mol = Chem.AddHs(Chem.MolFromSmiles(value))
+        elif format == 'MOL':
+            mol = Chem.MolFromMolFile(value,removeHs=False)
+        elif format == 'MOL2':
+            mol = Chem.MolFromMol2File(value,removeHs=False)
+        elif format == 'PDB':
+            mol = Chem.MolFromPDBFile(value,removeHs=False)
+        else:
+            raise ValueError("invalid choice: {} (choose from 'SMILES', 'MOL', 'MOL2', 'PDB')".format(format))
+
+        if format != 'SMILES' and needAddHs:
+                # 水素を追加する必要がある場合、
+                # 一度SMILESに変換し、molオブジェクトを得てから、addHsする
+                mol = Chem.AddHs(Chem.MolFromSmiles(Chem.MolToSmiles(mol)))
+        return mol
+
+
+    def __generateRdkitConformer(self, mol):
+        if len(mol.GetConformers()) == 0:
+            # conformerが存在しない場合(SMILESを経由している場合)
+            # 配座異性体を生成し、最適構造を導く
+            # https://www.ag.kagawa-u.ac.jp/charlesy/2020/02/26/2231/
+
+            # numConfsの数の配座異性体を生成
+            numConfs = 100
+            ps = AllChem.ETKDG()
+            ps.pruneRmsThresh = 0 #枝刈りなし
+            ps.numThreads = 1
+
+            cids = AllChem.EmbedMultipleConfs(mol, numConfs, ps)
+            # それらの構造最適化をする
+            AllChem.MMFFOptimizeMoleculeConfs(mol, numThreads=1)
+            prop = AllChem.MMFFGetMoleculeProperties(mol)
+            # エネルギーを計算し、そのエネルギーのリストを作成する
+            energyList = []
+            for cid in cids:
+                mmff = AllChem.MMFFGetMoleculeForceField(mol, prop, confId=cid)
+                energyList.append(mmff.CalcEnergy())
+
+            # もっともエネルギーが低かったものを採用する
+            conformerID = cids[energyList.index(min(energyList))]
+        else:
+            conformerID = 0
+
+        return mol.GetConformer(conformerID)
+
+    def giveAtomPositions(self):
+        # TODO 出来ればディープコピーにしたいが
+        return self.__positionList
+
+    def giveAtomNames(self):
+        return self.__atomNameList
+
+    def giveResidueNames(self):
+        return self.__residueNameList
+
+
 
 def uniform_random_rotateMatrix():
     # http://bluewidz.blogspot.com/2017/09/blog-post_30.html
@@ -90,15 +146,17 @@ def uniform_random_rotateMatrix():
 
 # 分子内の最大距離を算出
 def calcMaxInteratomicDistanceIn(conf):
-    atomxyzlist = conf.GetPositions()
+    atomxyzlist = conf.giveAtomPositions()
     return max(distance.pdist(atomxyzlist))
 
 class MolecularGroupBoxIterator():
     iter_id = 1
 
     def __init__(self, conf, lengthOfGroupBox, time, arrangeNumList):
-        self.iter_id = MolecularGroupBoxIterator.iter_id
-        MolecularGroupBoxIterator.iter_id += 1
+        #=======================================================================
+        # self.iter_id = MolecularGroupBoxIterator.iter_id
+        # MolecularGroupBoxIterator.iter_id += 1
+        #=======================================================================
 
         time = int(time)
         lengthOfSingleBox = lengthOfGroupBox/time
@@ -110,17 +168,19 @@ class MolecularGroupBoxIterator():
         self.__arrangeNumList = arrangeNumList
         self.__arrangeNumListIter = arrangeNumList.__iter__()
 
-        atomlist = conf.GetOwningMol().GetAtoms()
-        if atomlist[0].GetPDBResidueInfo() is None:
-            self.__singleBoxAtomNameList = [atom.GetSymbol() for atom in atomlist]
-            residueName = 'R{:0>2}'.format(self.iter_id)
-            self.__singleBoxResidueNameList = [residueName] * len(atomlist)
-
-        else:
-            #原子名
-            self.__singleBoxAtomNameList = [atom.GetPDBResidueInfo().GetName().replace(' ', '') for atom in atomlist]
-            #残基名
-            self.__singleBoxResidueNameList = [atom.GetPDBResidueInfo().GetResidueName().replace(' ', '') for atom in atomlist]
+#===============================================================================
+#         atomlist = conf.GetOwningMol().GetAtoms()
+#         if atomlist[0].GetPDBResidueInfo() is None:
+#             self.__singleBoxAtomNameList = [atom.GetSymbol() for atom in atomlist]
+#             residueName = 'R{:0>2}'.format(self.iter_id)
+#             self.__singleBoxResidueNameList = [residueName] * len(atomlist)
+#
+#         else:
+#             #原子名
+#             self.__singleBoxAtomNameList = [atom.GetPDBResidueInfo().GetName().replace(' ', '') for atom in atomlist]
+#             #残基名
+#             self.__singleBoxResidueNameList = [atom.GetPDBResidueInfo().GetResidueName().replace(' ', '') for atom in atomlist]
+#===============================================================================
 
         self.__singleBoxDisplacementList = [[i*lengthOfSingleBox, j*lengthOfSingleBox, k*lengthOfSingleBox] for i in range(time) for j in range(time) for k in range(time)]
         self.__singleBoxItr = self.__generateRandomRotatedConformerIter(conf, lengthOfSingleBox)
