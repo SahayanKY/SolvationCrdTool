@@ -12,6 +12,7 @@ from rdkit import rdBase
 from rdkit import Chem
 from rdkit.Chem import AllChem
 from rdkit.Chem import Descriptors
+from rdkit.Chem import rdchem
 
 class Conformer():
     # TODO 分子量の計算メソッドを追加
@@ -50,6 +51,17 @@ class Conformer():
             # 改めてPDBを読み込み直す
             self.__atomNameList, self.__residueNameList, self.__positionList = self.__generatePDBConformer(value)
 
+
+        # 分子量
+        periodictable = rdchem.GetPeriodicTable()
+        def getAW(symbol):
+            s = symbol.strip('0123456789')
+            try:
+                return periodictable.GetAtomicWeight(s)
+            except RuntimeError:
+                print('AtomicWeight of {} is 0'.format(symbol))
+                return 0
+        self.__molwt = sum([getAW(symbol) for symbol in self.__atomNameList])
 
 
 
@@ -131,6 +143,8 @@ class Conformer():
     def giveResidueNames(self):
         return self.__residueNameList
 
+    def giveMolWt(self):
+        return self.__molwt
 
 
 def uniform_random_rotateMatrix():
@@ -313,8 +327,8 @@ def mksolv(solventconf, soluteconf, solventNum, soluteNum, saveFilePath):
     print('indexSoluteList:{}'.format(indexSoluteList))
     print('solventTotalExcessNum:{}'.format(solventTotalExcessNum))
     # 単位 : g/mol
-    soluteMass = 0 if soluteconf is None else Descriptors.MolWt(soluteconf.GetOwningMol()) * soluteNum
-    solventMass = Descriptors.MolWt(solventconf.GetOwningMol()) * solventNum
+    soluteMass = 0 if soluteconf is None else soluteconf.giveMolWt() * soluteNum
+    solventMass = solventconf.giveMolWt() * solventNum
     # 単位 : angstrom^3
     soluteVolume = soluteNum * math.pow(lengthOfGroupBox,3)
     solventVolume = (groupBoxNum-soluteNum) * math.pow(lengthOfGroupBox,3)
