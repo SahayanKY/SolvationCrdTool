@@ -7,6 +7,7 @@ import random
 import math
 
 import numpy as np
+import pandas as pd
 from scipy.spatial import distance
 from rdkit import rdBase
 from rdkit import Chem
@@ -21,9 +22,24 @@ def calcGroupBoxNumPerSide(timeList, numList):
     各Conformerに対して指定されたtime設定と配置数を適用した場合に
     1辺当たりのGroupBoxの数を算出
     """
+    df = pd.DataFrame({'time':timeList, 'num':numList})
+    # 各time毎にnumの和をとる
+    numSum_groupByTime = df.groupby('time')['num'].sum()
+    # 実際に必要なのはこの情報なので置き換える
+    timeList = numSum_groupByTime.index
+    numList = numSum_groupByTime.values
 
+    # GroupBoxを立方体に並べたときの1辺当たりのGroupBoxの数を算出
+    # time == 2 の場合、1箱に8分子入る
+    # solventNum == 10 の場合、溶媒だけで2箱必要(過剰分は配置するときに減らして処理)
+    # さらにgroupBoxを立方体に配置できるように三乗根のceilの三乗をとる
+    # 1辺当たりの箱の数を計算
+    groupBoxNumPerSide = math.ceil(math.pow(
+            sum([math.ceil(n/(t*t*t)) for t,n in zip(timeList,numList)]),
+            1/3
+        ))
 
-    return None
+    return groupBoxNumPerSide
 
 # 溶液構造を生成
 def mksolv2(confList, numList, saveFilePath):
