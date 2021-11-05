@@ -196,11 +196,31 @@ def calcMaxInteratomicDistanceIn(conf):
 class MolecularGroupBoxIterator():
     iter_id = 1
 
-    def __init__(self, conf, lengthOfGroupBox, time, arrangeNumList):
+    def __init__(self, confList, lengthOfGroupBox, time, arrangeNumList):
+        """
+        confList:
+            [conf1, conf2, conf3]
+        arrangeNumList:
+            [
+                [5,3,2],
+                [5,2,1],
+                [4,3,2],
+                ...
+            ]
+        単一の化学種を配置する場合はlistでなくても動作する
+        """
         time = int(time)
         lengthOfSingleBox = lengthOfGroupBox/time
 
-        self.__conf = conf
+        if type(confList) is not list:
+            confList = [confList]
+        if type(arrangeNumList[0]) is not list:
+            arrangeNumList = [[num] for num in arrangeNumList]
+        if len(confList) != len(arrangeNumList[0]):
+            raise ValueError('Either confList or arrangeNumList is invalid.')
+        arrangeNumList = np.array(arrangeNumList)
+
+        self.__confList = confList
         self.__lengthOfGroupBox = lengthOfGroupBox
         self.__time = time
         self.__lengthOfSingleBox = lengthOfSingleBox
@@ -208,20 +228,20 @@ class MolecularGroupBoxIterator():
         self.__arrangeNumListIter = arrangeNumList.__iter__()
 
         self.__singleBoxDisplacementList = [[i*lengthOfSingleBox, j*lengthOfSingleBox, k*lengthOfSingleBox] for i in range(time) for j in range(time) for k in range(time)]
-        self.__singleBoxItr = self.__generateRandomRotatedConformerIter(conf, lengthOfSingleBox)
+        self.__singleBoxItrList = [self.__generateRandomRotatedConformerIter(confid, lengthOfSingleBox) for confid in range(len(confList))]
 
 
     # conformerを回転させた座標を与えるイテレータを生成
     # 得られる座標値は(paddingも含めて)原点基準にx,y,z>=0に平行移動したもの
-    def __generateRandomRotatedConformerIter(self, conf, lengthOfSingleBox):
-        #conf : rdkit.Chem.Conformer
+    def __generateRandomRotatedConformerIter(self, confid, lengthOfSingleBox):
+        #confid : Conformerのindex
         #lengthOfSingleBox : 1分子を入れる箱の一辺の長さ
-        #num : conformerに指定した化学種の総分子数
         #
         # 配置する総分子数
-        num = sum(self.__arrangeNumList)
+        conf = self.__confList[confid]
+        num = sum(self.__arrangeNumList[:,confid])
         # 全ての分子に対して回転行列を計算するのは無駄なので適当な数に絞る
-        rotateMatrixList = [uniform_random_rotateMatrix() for i in range(min(29,num))]
+        rotateMatrixList = [uniform_random_rotateMatrix() for _ in range(min(29,num))]
 
         rotatedList = []
         for R in rotateMatrixList:
@@ -243,28 +263,44 @@ class MolecularGroupBoxIterator():
         return itr # itr.__next__()で順に無限ループで取得
 
     def __next__(self):
-        # 今回の配置数を取得
+        # 今回の各化学種の配置数を取得
         arrangeNum = self.__arrangeNumListIter.__next__()
-        # スキップするタイミングを決定
-        arrangeIndexList = random.sample(range(self.getMoleculeNum()), k=arrangeNum)
+        # どのタイミングでどの化学種を配置したりスキップするのかを決定
+        # -1のときはスキップ
+        # 例えばtime==2で、今回化学種0を5個、化学種1を1個配置することになっていた場合(arrangeNum)
+        # [-1, -1, 0, 0, 0, 0, 0, 1] をシャッフルしたものをarrangeTimingとする
+        skipNum = self.getMoleculeNum() - sum(arrangeNum)
+        arrangeTiming = random.sample(np.repeat(range(-1,len(arrangeNum)), np.append(skipNum, arrangeNum)).tolist(), k=self.getMoleculeNum())
 
         # GroupBox内の各箱(SingleBox)ごとにrotatedを取得し、
         # displacementを足しこむことでそのSingleBoxに配置する(translated)
         # そしてtranslatedを次々登録していき、最後にそのリストを返す
         groupcoordlist = np.empty((0,3), float)
+        groupatomnames = []
+        groupresiduenames = []
+        groupresiduenums = []
+
+        # i: 0~time^3
+        # arrangedi: 0~sum(arrangeNum)
+        arrangedi = -1
         for i, displacement in enumerate(self.__singleBoxDisplacementList):
-            if i not in arrangeIndexList:
+            confid = arrangeTiming[i]
+            if confid == -1:
                 # 過剰分処理のためここはスキップ
                 continue
-            rotated = self.__singleBoxItr.__next__()
+            arrangedi += 1
+
+            # i番目の化学種を採用
+            rotated = self.__singleBoxItrList[confid].__next__()
             translated = rotated + displacement
             groupcoordlist = np.append(groupcoordlist, translated, axis=0)
 
-        # 実際に配置する分子数だけatomnamesやresiduenamesなどを倍増させる
-        groupatomnames = self.__conf.giveAtomNames() * arrangeNum
-        groupresiduenames = self.__conf.giveResidueNames() * arrangeNum
+            # 原子名等を記録
+            groupatomnames    = groupatomnames    + self.__confList[confid].giveAtomNames()
+            groupresiduenames = groupresiduenames + self.__confList[confid].giveResidueNames()
+            groupresiduenums  = groupresiduenums  + ([arrangedi] * len(self.__confList[confid].giveAtomNames()))
+
         groupatomnums = range(len(groupatomnames))
-        groupresiduenums = itertools.chain.from_iterable([ [i] * len(self.__conf.giveAtomNames()) for i in range(arrangeNum)])
 
         return groupcoordlist, groupatomnames, groupatomnums, groupresiduenames, groupresiduenums
 
