@@ -16,24 +16,33 @@ from rdkit.Chem import Descriptors
 
 from mksolv import *
 
+def calcGroupBoxNumPerSide(timeList, numList):
+    """
+    各Conformerに対して指定されたtime設定と配置数を適用した場合に
+    1辺当たりのGroupBoxの数を算出
+    """
+
+
+    return None
+
 # 溶液構造を生成
-def mksolv2(confNumList, saveFilePath):
-
-
-    solventMaxDist = calcMaxInteratomicDistanceIn(solventconf)
-    if soluteconf is None:
-        soluteMaxDist = 0
-    else:
-        soluteMaxDist  = calcMaxInteratomicDistanceIn(soluteconf)
+def mksolv2(confList, numList, saveFilePath):
+    # 各Conformerにおいて、分子内距離の最大値を算出
+    confMaxDistList = [ calcMaxInteratomicDistanceIn(conf) for conf in confList ]
 
     # 分子間の最低距離
-    padding = 1.3 # オングストローム
-    # 溶媒1分子、溶質1分子を配置する箱のサイズ
-    lengthOfSolventBox = solventMaxDist+padding
-    lengthOfSoluteBox  = soluteMaxDist+padding
-    # 溶媒に対する溶質の大きさ
-    # 溶質が溶媒に対して極端に大きい時、箱1つに溶媒分子1つは無駄なので、複数詰めさせる
-    time = max(1.0, math.floor(lengthOfSoluteBox/lengthOfSolventBox))
+    padding = 0.7 # オングストローム
+    # 各Conformer1分子を配置する箱のサイズ
+    lengthOfConformerBoxList = [dist+padding for dist in confMaxDistList]
+
+    # 最も大きい1分子箱のサイズを調べる
+    # 例えば溶質が溶媒に対して極端に大きい時、箱1つに溶媒分子1つは無駄なので、複数詰めさせる
+    # その倍率timeの上限を求める
+    maxLengthOfConformerBox = max(lengthOfConformerBoxList)
+    upperLimitOfTimeList = [ math.floor(maxLengthOfConformerBox/length) for length in lengthOfConformerBoxList ]
+
+    # TODO ここから修正再開
+    # 最適なtimeの組合せについて検討
 
     # 溶質、溶媒が収まるボックスの数を計算
     # time == 2 の場合、1箱に8分子入る
@@ -150,7 +159,8 @@ if __name__ == '__main__':
     # 引数に--があるインデックスを探し、
     # それぞれで分割して解釈
     optionIndexes = [i for i,s in enumerate(argv) if '--' in s] + [len(argv)]
-    confNumList = []
+    confList = []
+    numList = []
     for start, end in zip(optionIndexes[0:],optionIndexes[1:]):
         if argv[start] == '--save':
             if end - start != 2:
@@ -182,7 +192,8 @@ if __name__ == '__main__':
 
             # 分子の単一構造を生成し保存
             conf = generateConformer(format, molecule, needAddHs)
-            confNumList.append([conf, num])
+            confList.append(conf)
+            numList.append(num)
 
 
     # TODO seedの取り扱いについて後で考える
@@ -190,7 +201,7 @@ if __name__ == '__main__':
     random.seed(0)
 
     # 溶液構造を生成
-    structure = mksolv2(confNumList, saveFilePath)
+    structure = mksolv2(confList, numList, saveFilePath)
 
 
 
