@@ -11,19 +11,18 @@ from scipy.spatial import distance
 from rdkit import rdBase
 from rdkit import Chem
 from rdkit.Chem import AllChem
-from rdkit.Chem import Descriptors
 from rdkit.Chem import rdchem
 
 class Conformer():
     # TODO 分子量の計算メソッドを追加
     residue_id = 1
 
-    def __init__(self, format, value, needAddHs):
+    def __init__(self, molformat, value, needAddHs):
         self.residue_id = Conformer.residue_id
         Conformer.residue_id += 1
 
         # まずrdkitで読み込めないか試す
-        mol = self.__generateRdkitMol(format, value, needAddHs)
+        mol = self.__generateRdkitMol(molformat, value, needAddHs)
         if mol is not None:
             # 正常に読み込めた場合
             # rdkitのConformerを生成する
@@ -46,7 +45,7 @@ class Conformer():
             # 座標値
             self.__positionList = rdconf.GetPositions()
 
-        elif format == 'PDB':
+        elif molformat == 'PDB':
             # EPなどの存在によりrdkitでは読み込めなかった可能性がある場合
             # 改めてPDBを読み込み直す
             self.__atomNameList, self.__residueNameList, self.__positionList = self.__generatePDBConformer(value)
@@ -68,17 +67,17 @@ class Conformer():
         self.__setZeroPoint()
 
 
-    def __generateRdkitMol(self, format, value, needAddHs):
-        if format == 'SMILES':
+    def __generateRdkitMol(self, molformat, value, needAddHs):
+        if molformat == 'SMILES':
             mol = Chem.AddHs(Chem.MolFromSmiles(value))
-        elif format == 'MOL':
+        elif molformat == 'MOL':
             mol = Chem.MolFromMolFile(value,removeHs=False)
-        elif format == 'MOL2':
+        elif molformat == 'MOL2':
             mol = Chem.MolFromMol2File(value,removeHs=False)
-        elif format == 'PDB':
+        elif molformat == 'PDB':
             mol = Chem.MolFromPDBFile(value,removeHs=False)
         else:
-            raise ValueError("invalid choice: {} (choose from 'SMILES', 'MOL', 'MOL2', 'PDB')".format(format))
+            raise ValueError("invalid choice: {} (choose from 'SMILES', 'MOL', 'MOL2', 'PDB')".format(molformat))
 
         if format != 'SMILES' and needAddHs:
                 # 水素を追加する必要がある場合、
