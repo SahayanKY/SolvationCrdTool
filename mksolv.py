@@ -63,6 +63,9 @@ class Conformer():
                 return 0
         self.__molwt = sum([getAW(symbol) for symbol in self.__atomNameList])
 
+        # 座標の重心をゼロに合わせる
+        # 回転処理の際に想定外の場所に移動する可能性を防ぐ
+        self.__setZeroPoint()
 
 
     def __generateRdkitMol(self, format, value, needAddHs):
@@ -132,6 +135,14 @@ class Conformer():
         positionList = np.array([[float(s[30:38]),float(s[38:46]),float(s[46:54])] for s in lines])
 
         return atomNameList, residueNameList, positionList
+
+    def __setZeroPoint(self):
+        """
+        座標の重心をゼロにする
+        """
+        center = np.mean(self.__positionList, axis=0)
+        self.__positionList = self.__positionList - center
+
 
     def giveAtomPositions(self):
         # TODO 出来ればディープコピーにしたいが
@@ -425,9 +436,9 @@ if __name__ == '__main__':
         raise IOError('{} already exists.'.format(args.save))
 
     # 溶媒分子と溶質分子それぞれの単一構造を生成
-    solventconf = generateConformer(args.solvent_format, args.solvent, args.solvent_addHs)
+    solventconf = Conformer(args.solvent_format, args.solvent, args.solvent_addHs)
     if args.solute is not None:
-        soluteconf = generateConformer(args.solute_format, args.solute, args.solute_addHs)
+        soluteconf = Conformer(args.solute_format, args.solute, args.solute_addHs)
     else:
         soluteconf = None
 
