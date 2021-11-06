@@ -101,30 +101,45 @@ def mksolv2(confList, numList, saveFilePath):
     d1 = {t:sum(groupdict[t]['num']) for t in groupdict.keys()}
     timeOfMaxNum = max(d1, key=d1.get)
     # 後者の空隙を追加
+    groupdict[timeOfMaxNum]['groupBoxNum'] += groupBoxNum-currentGroupBoxNum
     groupdict[timeOfMaxNum]['voidNum'] += (groupBoxNum-currentGroupBoxNum)*(timeOfMaxNum*timeOfMaxNum*timeOfMaxNum)
 
-    # TODO ここから修正再開
-    # 溶質を配置するタイミングを決定
-    # groupBoxNumの中からsoluteNumの数だけランダムに数を取り出す
-    indexSoluteList = random.sample(range(groupBoxNum), k=soluteNum)
+    # [1,1,2,1,3,2,...]
+    # = time==1,1,2,1,3,2,...の順にgroupBoxを配置のように
+    # どのタイミングでどのtimeのgroupBoxを配置するのかを決める
+    timeTimingList = random.sample(np.repeat(groupdict.keys(), [groupdict[t]['groupBoxNum'] for t in groupdict.keys()]), k=groupBoxNum)
 
-    # 各groupboxにおいて、それぞれで幾つ分子を取り除くかを決定(過剰分の処理)
-    # (ただし、溶質は全て過剰ゼロ)
-    # まずは溶媒に関して過剰分の平均をとり、最低の過剰数を計算(確実にこの分は差し引く)
-    solventAverageExcessNum = math.floor(solventTotalExcessNum / (groupBoxNum-soluteNum))
-    solventExcessNumList = [ solventAverageExcessNum ] * (groupBoxNum-soluteNum)
-    # 残りは乱数で配分
-    for i in random.sample(range(len(solventExcessNumList)), k=int(solventTotalExcessNum - solventAverageExcessNum*(groupBoxNum-soluteNum))):
-        solventExcessNumList[i] += 1
-    # 溶質を配置するgroupboxでは過剰はゼロ
-    soluteExcessNumList = [0] * soluteNum
+    # 各timeの各groupboxに、どの化学種を何個配置するのかを決める
+    # 同時にgroupBoxIteratorを取得
+    for t in groupdict.keys():
+        # arrangeNumList
+        # [
+        #     [5,3,2],
+        #     [5,2,1],
+        #     [4,3,2],
+        #     ...
+        # ]
+        # 各groupboxに対する各confの最低の配置数を算出し仮設定する
+        minimumArrangeNum = [math.floor(n/groupdict[t]['groupBoxNum']) for n in groupdict[t]['num']]
+        arrangeNumList = np.array([minimumArrangeNum.copy() for _ in range(groupdict[t]['groupBoxNum'])])
 
-    # イテレータ取得
-    solventGroupBoxIter = MolecularGroupBoxIterator(solventconf, lengthOfGroupBox, time, solventExcessNumList)
-    if soluteconf is not None:
-        soluteGroupBoxIter = MolecularGroupBoxIterator(soluteconf, lengthOfGroupBox, 1, soluteExcessNumList)
-    else:
-        soluteGroupBoxIter = None
+        # 残り配置数を算出
+        # その分はランダムで配分
+        remainingNum = [ n-minimumn for n,minimumn in zip(groupdict[t]['num'], minimumArrangeNum) ]
+        # -1:空隙, 0:conf0, 1:conf1,...でそれぞれの残りの配置数でリピート
+        # ->ランダムシャッフル=残りの配置するタイミングを決める
+        remainingTiming = np.repeat(range(-1,len(remainingNum)), [groupdict[t]['voidNum']]+remainingNum)
+        random.shuffle(remainingTiming)
+        remainingTiming.reshape(-1,len(remainingNum))
+        # 足しこむ
+        for confid in range(len(remainingNum)):
+            arrangeNumList[:,confid] += np.count_nonzero(remainingNum==confid, axis=1)
+
+        # dictに登録
+        groupdict[t]['arrangeNumList'] = arrangeNumList.tolist()
+
+        # イテレータ取得
+        groupdict[t]['groupBoxIter'] = MolecularGroupBoxIterator(groupdict[t]['conf'], lengthOfGroupBox, t, groupdict[t]['arrangeNumList'])
 
     print('time:{}'.format(time))
     print('groupBoxNum:{}'.format(groupBoxNum))
