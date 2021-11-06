@@ -1,0 +1,11 @@
+#!/bin/bash
+# path to executable file
+# if you need to change these values, create the file ".solvcrdtool.config" in your home directory.
+
+python="python"
+gaussian="g16"
+bsub="bsub"
+
+# user custom
+[ -f ~/.solvcrdtool.config ] && source ~/.solvcrdtool.config
+
