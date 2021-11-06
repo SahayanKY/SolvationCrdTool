@@ -62,7 +62,7 @@ def mksolv2(confList, numList, saveFilePath):
     groupBoxNumPerSide = None
     for candiTimeList in itertools.product(*[range(1,n+1) for n in upperLimitOfTimeList]):
         boxnum = calcGroupBoxNumPerSide(candiTimeList, numList)
-        if groupBoxNumPerSide is None or optimizedGroupBoxNumPerSide > boxnum:
+        if groupBoxNumPerSide is None or groupBoxNumPerSide > boxnum:
             groupBoxNumPerSide = boxnum
             timeList = candiTimeList
 
@@ -96,7 +96,7 @@ def mksolv2(confList, numList, saveFilePath):
     # その前に現状のgroupboxの数と立方体にするために必要なgroupboxの数を算出
     # その差から必要な空隙の数を算出
     # 現状のgroupboxの数
-    currentGroupBoxNum = sum([d[t]['groupBoxNum'] for t in groupdict.keys()])
+    currentGroupBoxNum = sum([groupdict[t]['groupBoxNum'] for t in groupdict.keys()])
     # 立方体にするのに必要なgroupboxの数
     groupBoxNum = int(math.pow(groupBoxNumPerSide, 3))
     # どのtimeに空隙を追加するのかを決める
@@ -109,7 +109,7 @@ def mksolv2(confList, numList, saveFilePath):
     # [1,1,2,1,3,2,...]
     # = time==1,1,2,1,3,2,...の順にgroupBoxを配置のように
     # どのタイミングでどのtimeのgroupBoxを配置するのかを決める
-    timeTimingList = np.repeat(groupdict.keys(), [groupdict[t]['groupBoxNum'] for t in groupdict.keys()])
+    timeTimingList = np.repeat(list(groupdict.keys()), [groupdict[t]['groupBoxNum'] for t in groupdict.keys()])
     random.shuffle(timeTimingList)
 
     # 各timeの各groupboxに、どの化学種を何個配置するのかを決める
@@ -128,15 +128,17 @@ def mksolv2(confList, numList, saveFilePath):
 
         # 残り配置数を算出
         # その分はランダムで配分
-        remainingNum = [ n-minimumn for n,minimumn in zip(groupdict[t]['num'], minimumArrangeNum) ]
-        # -1:空隙, 0:conf0, 1:conf1,...でそれぞれの残りの配置数でリピート
-        # ->ランダムシャッフル=残りの配置するタイミングを決める
-        remainingTiming = np.repeat(range(-1,len(remainingNum)), [groupdict[t]['voidNum']]+remainingNum)
-        random.shuffle(remainingTiming)
-        remainingTiming.reshape(-1,len(remainingNum))
-        # 足しこむ
-        for confid in range(len(remainingNum)):
-            arrangeNumList[:,confid] += np.count_nonzero(remainingNum==confid, axis=1)
+        remainingNum = [ n - minPerBox * groupdict[t]['groupBoxNum'] for n,minPerBox in zip(groupdict[t]['num'], minimumArrangeNum) ]
+        if sum(remainingNum) != 0:
+            # まだ追加する必要がある場合
+            # -1:空隙, 0:conf0, 1:conf1,...でそれぞれの残りの配置数でリピート
+            # ->ランダムシャッフル=残りの配置するタイミングを決める
+            remainingTiming = np.repeat(range(-1,len(remainingNum)), [groupdict[t]['voidNum']]+remainingNum)
+            random.shuffle(remainingTiming)
+            remainingTiming = remainingTiming.reshape(-1,len(remainingNum))
+            # 足しこむ
+            for confid in range(len(remainingNum)):
+                arrangeNumList[:,confid] += np.count_nonzero(remainingTiming==confid, axis=1)
 
         # dictに登録
         groupdict[t]['arrangeNumList'] = arrangeNumList.tolist()
@@ -230,10 +232,10 @@ if __name__ == '__main__':
                 # 保存先が既に存在していた場合
                 raise IOError('{} already exists.'.format(saveFilePath))
         elif argv[start] == '--mol':
-            if end - start != 4 or end - start != 5:
+            if end - start != 4 and end - start != 5:
                 # 値の数を確認
                 parser.error("--mol argument requires <format> <molecule> <num> [needAddHs]")
-            format = argv[start+1]
+            molformat = argv[start+1]
             molecule = argv[start+2]
             num = argv[start+3]
             if not num.isdecimal() or int(num) < 1:
@@ -241,15 +243,17 @@ if __name__ == '__main__':
             else:
                 num = int(num)
             if end - start == 5:
-                if type(argv[start+4]) is bool:
-                    needAddHs = argv[start+4]
+                if argv[start+4] == 'True' or argv[start+4] == 'true':
+                    needAddHs = True
+                elif argv[start+4] == 'False' or argv[start+4] == 'false':
+                    needAddHs = False
                 else:
                     parser.error("[needAddHs] must be boolean")
             else:
                 needAddHs = False
 
             # 分子の単一構造を生成し保存
-            conf = generateConformer(format, molecule, needAddHs)
+            conf = Conformer(molformat, molecule, needAddHs)
             confList.append(conf)
             numList.append(num)
 
