@@ -57,16 +57,25 @@ def mksolv2(confList, numList, saveFilePath):
     maxLengthOfConformerBox = max(lengthOfConformerBoxList)
     upperLimitOfTimeList = [ math.floor(maxLengthOfConformerBox/length) for length in lengthOfConformerBoxList ]
 
-    # TODO ここから修正再開
     # 最適なtimeの組合せについて検討
+    groupBoxNumPerSide = None
+    for candiTimeList in itertools.product(*[range(1,n+1) for n in upperLimitOfTimeList]):
+        boxnum = calcGroupBoxNumPerSide(candiTimeList, numList)
+        if groupBoxNumPerSide is None or optimizedGroupBoxNumPerSide > boxnum:
+            groupBoxNumPerSide = boxnum
+            timeList = candiTimeList
 
-    # 溶質、溶媒が収まるボックスの数を計算
-    # time == 2 の場合、1箱に8分子入る
-    # solventNum == 10 の場合、溶媒だけで2箱必要(過剰分は配置するときに減らして処理)
-    # さらにgroupBoxを立方体に配置できるように三乗根のceilの三乗をとる
-    # 1辺当たりの箱の数を計算
-    groupBoxNumPerSide = math.ceil(math.pow(solventNum / (time*time*time) + soluteNum, 1/3))
+    # groupBoxの数を算出
     groupBoxNum = int(math.pow(groupBoxNumPerSide, 3))
+    # 各groupBoxに配置する分子の数を決定する
+    # その前に空隙を配置する数を求める
+    # 空隙には
+    # ・各time毎に複数の立方体に整形することにより発生する空隙
+    # ・全体を1つの立方体に整形することにより発生する空隙
+    # の2種類が存在する
+    #
+    # 後者の空隙は最も分子数の多いtimeに埋めてもらうことで対処する
+    # TODO ここから修正
     # 過剰の溶媒分子の数を計算し、その分を後で引く
     solventTotalExcessNum = (groupBoxNum-soluteNum) * time*time*time - solventNum
     # 箱の辺の長さ
