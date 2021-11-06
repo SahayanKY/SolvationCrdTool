@@ -66,6 +66,8 @@ def mksolv2(confList, numList, saveFilePath):
             groupBoxNumPerSide = boxnum
             timeList = candiTimeList
 
+    print('groupBoxNumPerSide:{}'.format(groupBoxNumPerSide))
+
     # confとtimeとnumを一つのDictにまとめてしまう
     # {
     #     1: {'conf':[conf1,conf2], 'num':[1,14]},
@@ -107,7 +109,8 @@ def mksolv2(confList, numList, saveFilePath):
     # [1,1,2,1,3,2,...]
     # = time==1,1,2,1,3,2,...の順にgroupBoxを配置のように
     # どのタイミングでどのtimeのgroupBoxを配置するのかを決める
-    timeTimingList = random.sample(np.repeat(groupdict.keys(), [groupdict[t]['groupBoxNum'] for t in groupdict.keys()]), k=groupBoxNum)
+    timeTimingList = np.repeat(groupdict.keys(), [groupdict[t]['groupBoxNum'] for t in groupdict.keys()])
+    random.shuffle(timeTimingList)
 
     # 各timeの各groupboxに、どの化学種を何個配置するのかを決める
     # 同時にgroupBoxIteratorを取得
@@ -141,21 +144,16 @@ def mksolv2(confList, numList, saveFilePath):
         # イテレータ取得
         groupdict[t]['groupBoxIter'] = MolecularGroupBoxIterator(groupdict[t]['conf'], lengthOfGroupBox, t, groupdict[t]['arrangeNumList'])
 
-    print('time:{}'.format(time))
-    print('groupBoxNum:{}'.format(groupBoxNum))
-    print('groupBoxNumPerSide:{}'.format(groupBoxNumPerSide))
-    print('indexSoluteList:{}'.format(indexSoluteList))
-    print('solventTotalExcessNum:{}'.format(solventTotalExcessNum))
-    # 単位 : g/mol
-    soluteMass = 0 if soluteconf is None else Descriptors.MolWt(soluteconf.GetOwningMol()) * soluteNum
-    solventMass = Descriptors.MolWt(solventconf.GetOwningMol()) * solventNum
-    # 単位 : angstrom^3
-    soluteVolume = soluteNum * math.pow(lengthOfGroupBox,3)
-    solventVolume = (groupBoxNum-soluteNum) * math.pow(lengthOfGroupBox,3)
-    if soluteconf is not None:
-        print('pureSoluteDensity:{:7.5f}[g/cm3]'.format(soluteMass/soluteVolume * (10/6.02214076)))
-        print('pureSolventDensity:{:7.5f}[g/cm3]'.format(solventMass/solventVolume * (10/6.02214076)))
-    print('solutionDensity:{:7.5f}[g/cm3]'.format((soluteMass+solventMass)/(soluteVolume+solventVolume) * (10/6.02214076)))
+        print('-----')
+        print('time:{}'.format(t))
+        print('groupBoxNum:{}'.format(groupdict[t]['groupBoxNum']))
+        print('-----')
+        # 単位 : g/mol
+        mass = sum([conf.giveMolWt()*n for conf,n in zip(groupdict[t]['conf'], groupdict[t]['num'])])
+        groupdict[t]['mass'] = mass
+
+    totalmass = sum([groupdict[t]['mass'] for t in groupdict.keys()])
+    print('solutionDensity:{:7.5f}[g/cm3]'.format(totalmass/math.pow(lengthOfGroupBox*groupBoxNumPerSide,3) * (10/6.02214076)))
 
     i = 0
     j = 0
@@ -166,12 +164,9 @@ def mksolv2(confList, numList, saveFilePath):
     for boxi in range(groupBoxNum):
         boxiMinCoord = minCoord + [i*lengthOfGroupBox, j*lengthOfGroupBox, k*lengthOfGroupBox]
 
-        if boxi in indexSoluteList:
-            # 今回は溶質を配置
-            groupboxiter = soluteGroupBoxIter
-        else:
-            # 今回は溶媒を配置
-            groupboxiter = solventGroupBoxIter
+        # 今回のGroupBoxIterを取得
+        time = timeTimingList[boxi]
+        groupboxiter = groupdict[time]['groupBoxIter']
 
         coords, atomNames, atomNums, residueNames, residueNums = groupboxiter.__next__()
         atomNums = [atomNumOffset + i for i in atomNums]
