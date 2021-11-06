@@ -129,16 +129,14 @@ def mksolv2(confList, numList, saveFilePath):
         # 残り配置数を算出
         # その分はランダムで配分
         remainingNum = [ n - minPerBox * groupdict[t]['groupBoxNum'] for n,minPerBox in zip(groupdict[t]['num'], minimumArrangeNum) ]
-        if sum(remainingNum) != 0:
-            # まだ追加する必要がある場合
-            # -1:空隙, 0:conf0, 1:conf1,...でそれぞれの残りの配置数でリピート
-            # ->ランダムシャッフル=残りの配置するタイミングを決める
-            remainingTiming = np.repeat(range(-1,len(remainingNum)), [groupdict[t]['voidNum']]+remainingNum)
-            random.shuffle(remainingTiming)
-            remainingTiming = remainingTiming.reshape(-1,len(remainingNum))
-            # 足しこむ
-            for confid in range(len(remainingNum)):
-                arrangeNumList[:,confid] += np.count_nonzero(remainingTiming==confid, axis=1)
+        # -1:空隙, 0:conf0, 1:conf1,...でそれぞれの残りの配置数でリピート
+        # ->ランダムシャッフル=残りの配置するタイミングを決める
+        remainingTiming = np.repeat(range(-1,len(remainingNum)), [groupdict[t]['voidNum']]+remainingNum)
+        random.shuffle(remainingTiming)
+        remainingTiming = remainingTiming.reshape(groupdict[t]['groupBoxNum'],-1)
+        # 足しこむ
+        for confid in range(len(remainingNum)):
+            arrangeNumList[:,confid] += np.count_nonzero(remainingTiming==confid, axis=1)
 
         # dictに登録
         groupdict[t]['arrangeNumList'] = arrangeNumList.tolist()
