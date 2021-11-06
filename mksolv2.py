@@ -52,10 +52,11 @@ def mksolv2(confList, numList, saveFilePath):
     lengthOfConformerBoxList = [dist+padding for dist in confMaxDistList]
 
     # 最も大きい1分子箱のサイズを調べる
+    # そのサイズが単一のGroupBoxのサイズになる
+    lengthOfGroupBox = max(lengthOfConformerBoxList)
     # 例えば溶質が溶媒に対して極端に大きい時、箱1つに溶媒分子1つは無駄なので、複数詰めさせる
     # その倍率timeの上限を求める
-    maxLengthOfConformerBox = max(lengthOfConformerBoxList)
-    upperLimitOfTimeList = [ math.floor(maxLengthOfConformerBox/length) for length in lengthOfConformerBoxList ]
+    upperLimitOfTimeList = [ math.floor(lengthOfGroupBox/length) for length in lengthOfConformerBoxList ]
 
     # 最適なtimeの組合せについて検討
     groupBoxNumPerSide = None
@@ -65,22 +66,44 @@ def mksolv2(confList, numList, saveFilePath):
             groupBoxNumPerSide = boxnum
             timeList = candiTimeList
 
-    # groupBoxの数を算出
-    groupBoxNum = int(math.pow(groupBoxNumPerSide, 3))
+    # confとtimeとnumを一つのDictにまとめてしまう
+    # {
+    #     1: {'conf':[conf1,conf2], 'num':[1,14]},
+    #     2: {'conf':[conf3], 'num':[150]}
+    # }
+    # groupbyを使うために一度DataFrameを経由する
+    df = pd.DataFrame({'conf':confList, 'time':timeList, 'num':numList})
+    groupdict = {d[0]:d[1][['conf','num']].to_dict(orient='list') for d in df.groupby('time')}
+
     # 各groupBoxに配置する分子の数を決定する
     # その前に空隙を配置する数を求める
     # 空隙には
     # ・各time毎に複数の立方体に整形することにより発生する空隙
     # ・全体を1つの立方体に整形することにより発生する空隙
     # の2種類が存在する
-    #
     # 後者の空隙は最も分子数の多いtimeに埋めてもらうことで対処する
-    # TODO ここから修正
-    # 過剰の溶媒分子の数を計算し、その分を後で引く
-    solventTotalExcessNum = (groupBoxNum-soluteNum) * time*time*time - solventNum
-    # 箱の辺の長さ
-    lengthOfGroupBox = max(lengthOfSolventBox, lengthOfSoluteBox)
+    #
+    # 前者の空隙数を設定
+    for t in groupdict.keys():
+        sumNum = sum(groupdict[t]['num'])
+        groupBoxNum_fort = math.ceil(sumNum/(t*t*t))
+        voidNum = int(groupBoxNum_fort*(t*t*t) -sumNum)
+        groupdict[t]['groupBoxNum'] = groupBoxNum_fort
+        groupdict[t]['voidNum'] = voidNum
+    # 後者の空隙数を追加
+    # その前に現状のgroupboxの数と立方体にするために必要なgroupboxの数を算出
+    # その差から必要な空隙の数を算出
+    # 現状のgroupboxの数
+    currentGroupBoxNum = sum([d[t]['groupBoxNum'] for t in groupdict.keys()])
+    # 立方体にするのに必要なgroupboxの数
+    groupBoxNum = int(math.pow(groupBoxNumPerSide, 3))
+    # どのtimeに空隙を追加するのかを決める
+    d1 = {t:sum(groupdict[t]['num']) for t in groupdict.keys()}
+    timeOfMaxNum = max(d1, key=d1.get)
+    # 後者の空隙を追加
+    groupdict[timeOfMaxNum]['voidNum'] += (groupBoxNum-currentGroupBoxNum)*(timeOfMaxNum*timeOfMaxNum*timeOfMaxNum)
 
+    # TODO ここから修正再開
     # 溶質を配置するタイミングを決定
     # groupBoxNumの中からsoluteNumの数だけランダムに数を取り出す
     indexSoluteList = random.sample(range(groupBoxNum), k=soluteNum)
