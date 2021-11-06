@@ -1,19 +1,4 @@
-import argparse
-import platform
-import sys
-import os
-import itertools
-import random
-import math
-
-import numpy as np
 import pandas as pd
-from scipy.spatial import distance
-from rdkit import rdBase
-from rdkit import Chem
-from rdkit.Chem import AllChem
-from rdkit.Chem import Descriptors
-
 
 from mksolv import *
 
